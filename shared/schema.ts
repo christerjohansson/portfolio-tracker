@@ -41,8 +41,9 @@ export const holdings = sqliteTable("holdings", {
   assetId: integer("asset_id").notNull().references(() => assets.id),
   account: text("account").notNull(),           // e.g. "Avanza ISK", "SEB", "Kraken"
   quantity: real("quantity").notNull().default(0),
-  costBasis: real("cost_basis").notNull().default(0), // total cost in asset currency
-  currentPrice: real("current_price"),          // last known price in asset currency
+  costBasis: real("cost_basis").notNull().default(0),
+  costBasisCurrency: text("cost_basis_currency"), // overrides asset's native currency for cost calculation
+  currentPrice: real("current_price"),
   lastPriceUpdate: text("last_price_update"),   // ISO datetime
   manualPrice: integer("manual_price", { mode: "boolean" }).notNull().default(false),
   notes: text("notes"),

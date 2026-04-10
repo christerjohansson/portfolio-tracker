@@ -1,6 +1,6 @@
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import Database from "better-sqlite3";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, sql } from "drizzle-orm";
 import {
   assets, holdings, transactions, dividends, fxRates,
   type Asset, type InsertAsset,
@@ -38,6 +38,7 @@ sqlite.exec(`
     account TEXT NOT NULL,
     quantity REAL NOT NULL DEFAULT 0,
     cost_basis REAL NOT NULL DEFAULT 0,
+    cost_basis_currency TEXT,
     current_price REAL,
     last_price_update TEXT,
     manual_price INTEGER NOT NULL DEFAULT 0,
@@ -88,6 +89,13 @@ if (existingRates.length === 0) {
     { currency: "EUR", rateSek: 11.20, updatedAt: now },
     { currency: "NOK", rateSek: 0.98, updatedAt: now },
   ]).run();
+}
+
+// Ensure cost_basis_currency column exists (migration)
+try {
+  db.run(sql`ALTER TABLE holdings ADD COLUMN cost_basis_currency TEXT`);
+} catch (e) {
+  // column likely exists already
 }
 
 export interface IStorage {

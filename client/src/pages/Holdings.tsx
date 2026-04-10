@@ -4,7 +4,7 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import type { Asset, Holding, FxRate } from "@shared/schema";
 import {
   formatSEK, formatCurrency, formatPct, formatNumber,
-  toSEK, holdingMarketValue, holdingGainLoss, holdingGainLossPct,
+  toSEK, holdingMarketValue, holdingGainLossSEK, holdingGainLossPct,
   ASSET_TYPE_LABELS, ASSET_TYPE_CURRENCIES, CURRENCIES
 } from "@/lib/portfolio";
 import { useToast } from "@/hooks/use-toast";
@@ -145,6 +145,7 @@ function AddHoldingModal({ open, onClose, assets }: { open: boolean; onClose: ()
       account: "",
       quantity: "",
       costBasis: "",
+      costBasisCurrency: "SEK",
       currentPrice: "",
       manualPrice: false,
     },
@@ -171,6 +172,7 @@ function AddHoldingModal({ open, onClose, assets }: { open: boolean; onClose: ()
           account: d.account,
           quantity: Number(d.quantity),
           costBasis: Number(d.costBasis),
+          costBasisCurrency: d.costBasisCurrency || null,
           currentPrice: d.currentPrice ? Number(d.currentPrice) : null,
           manualPrice: d.manualPrice,
         }))} className="space-y-4">
@@ -196,7 +198,19 @@ function AddHoldingModal({ open, onClose, assets }: { open: boolean; onClose: ()
             </div>
             <div>
               <label className="text-sm font-medium mb-1.5 block">Anskaffningsvärde</label>
-              <Input type="number" step="any" placeholder="8250.00" {...form.register("costBasis")} />
+              <div className="flex gap-2">
+                <Input type="number" step="any" placeholder="8250.00" {...form.register("costBasis")} className="flex-1" />
+                <Select value={form.watch("costBasisCurrency")} onValueChange={v => form.setValue("costBasisCurrency", v)}>
+                  <SelectTrigger className="w-24">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {assets.map(a => a.currency).filter((v, i, a) => a.indexOf(v) === i).concat(["SEK"]).filter((v, i, a) => a.indexOf(v) === i).map(c => (
+                      <SelectItem key={c} value={c}>{c}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
@@ -232,6 +246,7 @@ function EditHoldingModal({ holding, assets, onClose }: { holding: Holding | nul
       account: holding ? holding.account : "",
       quantity: holding ? String(holding.quantity) : "",
       costBasis: holding ? String(holding.costBasis) : "",
+      costBasisCurrency: holding && holding.costBasisCurrency ? holding.costBasisCurrency : (holding ? (assets.find(a => a.id === holding.assetId)?.currency || "SEK") : "SEK"),
       currentPrice: holding && holding.currentPrice !== null ? String(holding.currentPrice) : "",
       manualPrice: holding ? holding.manualPrice : false,
     },
@@ -258,6 +273,7 @@ function EditHoldingModal({ holding, assets, onClose }: { holding: Holding | nul
             account: d.account,
             quantity: Number(d.quantity),
             costBasis: Number(d.costBasis),
+            costBasisCurrency: d.costBasisCurrency || null,
             currentPrice: d.currentPrice ? Number(d.currentPrice) : null,
             manualPrice: d.manualPrice,
           }))} className="space-y-4">
@@ -283,7 +299,19 @@ function EditHoldingModal({ holding, assets, onClose }: { holding: Holding | nul
               </div>
               <div>
                 <label className="text-sm font-medium mb-1.5 block">Anskaffningsvärde</label>
-                <Input type="number" step="any" {...form.register("costBasis")} />
+                <div className="flex gap-2">
+                  <Input type="number" step="any" {...form.register("costBasis")} className="flex-1" />
+                  <Select value={form.watch("costBasisCurrency")} onValueChange={v => form.setValue("costBasisCurrency", v)}>
+                    <SelectTrigger className="w-24">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {assets.map(a => a.currency).filter((v, i, a) => a.indexOf(v) === i).concat(["SEK"]).filter((v, i, a) => a.indexOf(v) === i).map(c => (
+                        <SelectItem key={c} value={c}>{c}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
@@ -342,10 +370,10 @@ export default function Holdings() {
     const asset = assetMap.get(h.assetId);
     if (!asset) return null;
     const valueSEK = toSEK(holdingMarketValue(h), asset.currency, fxRates);
-    const gainPct = holdingGainLossPct(h);
-    const gainNative = holdingGainLoss(h);
-    return { h, asset, valueSEK, gainPct, gainNative };
-  }).filter(Boolean) as { h: Holding; asset: Asset; valueSEK: number; gainPct: number; gainNative: number }[];
+    const gainPct = holdingGainLossPct(h, asset.currency, fxRates);
+    const gainSEK = holdingGainLossSEK(h, asset.currency, fxRates);
+    return { h, asset, valueSEK, gainPct, gainSEK };
+  }).filter(Boolean) as { h: Holding; asset: Asset; valueSEK: number; gainPct: number; gainSEK: number }[];
 
   // Filter
   const filtered = rows.filter(r =>
@@ -424,7 +452,7 @@ export default function Holdings() {
                     </tr>
                   </thead>
                   <tbody>
-                    {group.rows.map(({ h, asset, valueSEK, gainPct, gainNative }) => (
+                    {group.rows.map(({ h, asset, valueSEK, gainPct, gainSEK }) => (
                       <tr key={h.id} className="border-b border-border/40 hover:bg-muted/20 transition-colors">
                         <td className="px-5 py-3">
                           <div className="font-medium flex items-center gap-1.5">
@@ -446,7 +474,7 @@ export default function Holdings() {
                           {h.currentPrice ? formatSEK(valueSEK) : <span className="text-muted-foreground">—</span>}
                         </td>
                         <td className="px-4 py-3 text-right tabular-nums text-muted-foreground">
-                          {formatSEK(toSEK(h.costBasis, asset.currency, fxRates))}
+                          {formatSEK(toSEK(h.costBasis, h.costBasisCurrency || asset.currency, fxRates))}
                         </td>
                         <td className={`px-4 py-3 text-right tabular-nums font-medium ${gainPct >= 0 ? "text-gain" : "text-loss"}`}>
                           {h.currentPrice ? formatPct(gainPct) : <span className="text-muted-foreground">—</span>}

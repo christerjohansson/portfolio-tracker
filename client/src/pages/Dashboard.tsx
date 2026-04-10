@@ -118,7 +118,7 @@ export default function Dashboard() {
       const asset = assetMap.get(h.assetId);
       if (!asset) return null;
       const valueSEK = toSEK(holdingMarketValue(h), asset.currency, fxRates);
-      const pct = holdingGainLossPct(h);
+      const pct = holdingGainLossPct(h, asset.currency, fxRates);
       return { h, asset, valueSEK, pct };
     })
     .filter(Boolean)

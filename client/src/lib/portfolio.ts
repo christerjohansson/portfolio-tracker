@@ -14,16 +14,21 @@ export function holdingMarketValue(h: Holding): number {
   return h.quantity * h.currentPrice;
 }
 
-// Gain/Loss in native currency
-export function holdingGainLoss(h: Holding): number {
+// Gain/Loss in SEK
+export function holdingGainLossSEK(h: Holding, assetCurrency: string, fxRates: FxRate[]): number {
   if (!h.currentPrice) return 0;
-  return holdingMarketValue(h) - h.costBasis;
+  const marketSEK = toSEK(holdingMarketValue(h), assetCurrency, fxRates);
+  const costSEK = toSEK(h.costBasis, h.costBasisCurrency || assetCurrency, fxRates);
+  return marketSEK - costSEK;
 }
 
 // Gain/Loss %
-export function holdingGainLossPct(h: Holding): number {
+export function holdingGainLossPct(h: Holding, assetCurrency: string, fxRates: FxRate[]): number {
   if (!h.currentPrice || h.costBasis === 0) return 0;
-  return ((holdingMarketValue(h) - h.costBasis) / h.costBasis) * 100;
+  const marketSEK = toSEK(holdingMarketValue(h), assetCurrency, fxRates);
+  const costSEK = toSEK(h.costBasis, h.costBasisCurrency || assetCurrency, fxRates);
+  if (costSEK === 0) return 0;
+  return ((marketSEK - costSEK) / costSEK) * 100;
 }
 
 // Yield on Cost = total dividends received / cost basis * 100
@@ -134,7 +139,7 @@ export function buildPortfolioSummary(
     const asset = assetMap.get(h.assetId);
     if (!asset) continue;
     const valueSEK = toSEK(holdingMarketValue(h), asset.currency, fxRates);
-    const costSEK = toSEK(h.costBasis, asset.currency, fxRates);
+    const costSEK = toSEK(h.costBasis, h.costBasisCurrency || asset.currency, fxRates);
     totalValueSEK += valueSEK;
     totalCostSEK += costSEK;
     allocationByCurrency[asset.currency] = (allocationByCurrency[asset.currency] || 0) + valueSEK;

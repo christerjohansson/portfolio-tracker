@@ -354,7 +354,7 @@ export default function Dividends() {
                 {Object.entries(byHolding).map(([hid, info]) => {
                   const h = holdingMap.get(Number(hid));
                   const a = h ? assetMap.get(h.assetId) : null;
-                  const costBasis = h ? toSEK(h.costBasis, a?.currency || "SEK", fxRates) : 0;
+                  const costBasis = h ? toSEK(h.costBasis, h.costBasisCurrency || a?.currency || "SEK", fxRates) : 0;
                   const yoc = yieldOnCost(costBasis, info.totalSEK);
                   return (
                     <tr key={hid} className="border-b border-border/40 hover:bg-muted/20 transition-colors">
