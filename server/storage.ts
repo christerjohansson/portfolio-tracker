@@ -8,9 +8,15 @@ import {
   type Transaction, type InsertTransaction,
   type Dividend, type InsertDividend,
   type FxRate, type InsertFxRate,
+  users, type User, type InsertUser,
 } from "@shared/schema";
 
 const sqlite = new Database("portfolio.db");
+const key = process.env.DB_ENCRYPTION_KEY;
+if (key) {
+  sqlite.pragma(`cipher='sqlcipher'`);
+  sqlite.pragma(`key='${key}'`);
+}
 export const db = drizzle(sqlite);
 
 // Ensure tables exist
@@ -64,6 +70,12 @@ sqlite.exec(`
     rate_sek REAL NOT NULL,
     updated_at TEXT NOT NULL
   );
+  CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT NOT NULL DEFAULT 'admin',
+    password_hash TEXT NOT NULL,
+    salt TEXT NOT NULL
+  );
 `);
 
 // Seed default FX rates if empty
@@ -78,6 +90,12 @@ if (existingRates.length === 0) {
 }
 
 export interface IStorage {
+  // Users
+  getUser(id: number): User | undefined;
+  getUserByUsername(username: string): User | undefined;
+  createUser(data: InsertUser): User;
+  hasUsers(): boolean;
+
   // Assets
   getAssets(): Asset[];
   getAsset(id: number): Asset | undefined;
@@ -111,6 +129,21 @@ export interface IStorage {
 }
 
 export const storage: IStorage = {
+  // ─── Users ─────────────────────────────────────────────────────────
+  getUser(id) {
+    return db.select().from(users).where(eq(users.id, id)).get();
+  },
+  getUserByUsername(username) {
+    return db.select().from(users).where(eq(users.username, username)).get();
+  },
+  createUser(data) {
+    return db.insert(users).values(data).returning().get();
+  },
+  hasUsers() {
+    const res = db.select().from(users).limit(1).all();
+    return res.length > 0;
+  },
+
   // ─── Assets ────────────────────────────────────────────────────────
   getAssets() {
     return db.select().from(assets).all();

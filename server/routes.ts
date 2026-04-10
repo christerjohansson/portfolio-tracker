@@ -1,7 +1,10 @@
 import type { Express } from "express";
 import type { Server } from "http";
 import { storage } from "./storage";
+import { requireAuth } from "./auth";
 import { insertAssetSchema, insertHoldingSchema, insertTransactionSchema, insertDividendSchema } from "@shared/schema";
+import { detectFormatAndParse } from "./importers";
+import type { ImportRow } from "./importers/types";
 
 // Fetch live price from Yahoo Finance (via redirect)
 async function fetchYahooPrice(ticker: string, type: string): Promise<number | null> {
@@ -64,6 +67,14 @@ async function fetchFxRates(): Promise<Record<string, number> | null> {
 }
 
 export function registerRoutes(httpServer: Server, app: Express) {
+  // Apply auth to all /api routes except auth endpoints itself
+  app.use("/api", (req, res, next) => {
+    if (req.path.startsWith("/auth")) {
+      return next();
+    }
+    return requireAuth(req, res, next);
+  });
+
   // ─── Assets ──────────────────────────────────────────────────────────────
   app.get("/api/assets", (_req, res) => {
     res.json(storage.getAssets());
@@ -276,5 +287,76 @@ export function registerRoutes(httpServer: Server, app: Express) {
     }
 
     res.json({ parsed, raw: text });
+  });
+
+  // ─── CSV Import ────────────────────────────────────────────────────────────
+  app.post("/api/import/preview", (req, res) => {
+    const { csv, source } = req.body;
+    if (!csv) return res.status(400).json({ error: "Missing csv content" });
+    const result = detectFormatAndParse(csv, source);
+    res.json(result);
+  });
+
+  app.post("/api/import/execute", (req, res) => {
+    const { rows, assetMapping } = req.body as { rows: ImportRow[], assetMapping: Record<string, number> };
+    if (!rows || !Array.isArray(rows)) return res.status(400).json({ error: "No rows provided" });
+    
+    let createdTransactions = 0;
+    
+    // Group transactions by mapped assetId
+    for (const row of rows) {
+      let assetId = assetMapping[row.assetName];
+      // If we don't have a mapping but the asset name matches exactly, try to find it
+      if (!assetId) {
+        const found = storage.getAssets().find(a => a.name.toLowerCase() === row.assetName.toLowerCase());
+        if (found) assetId = found.id;
+      }
+      
+      if (!assetId) continue; // Skip rows where asset mapping is unresolved
+
+      // Try to find a holding for this asset + account combination
+      let holding = storage.getHoldingsByAsset(assetId).find(h => h.account === (row.account || "Default"));
+      
+      if (!holding) {
+        holding = storage.createHolding({
+          assetId,
+          account: row.account || "Default",
+          quantity: 0,
+          costBasis: 0,
+          manualPrice: false
+        });
+      }
+
+      // Create transaction
+      if (row.type === "dividend") {
+        storage.createDividend({
+          holdingId: holding.id,
+          date: row.date,
+          amount: row.amount / (row.quantity || 1),
+          totalAmount: row.amount,
+          currency: row.currency,
+          notes: "Imported"
+        });
+      } else {
+        storage.createTransaction({
+          holdingId: holding.id,
+          type: row.type,
+          date: row.date,
+          quantity: row.quantity,
+          price: row.price,
+          amount: row.amount,
+          fees: row.fees,
+          rawImport: row.rawLine,
+          notes: "Imported"
+        });
+      }
+      createdTransactions++;
+    }
+
+    // Refresh holdings to auto-calculate totals
+    // (A real app would do this automatically in the DB trigger or recalculate here,
+    // but the tracker frontend will refetch /api/holdings)
+
+    res.json({ success: true, createdTransactions });
   });
 }

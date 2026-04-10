@@ -8,20 +8,24 @@ import Dashboard from "@/pages/Dashboard";
 import Holdings from "@/pages/Holdings";
 import Dividends from "@/pages/Dividends";
 import Transactions from "@/pages/Transactions";
+import Import from "@/pages/Import";
 import Settings from "@/pages/Settings";
 import NotFound from "@/pages/not-found";
 
 import {
   LayoutDashboard, Briefcase, Banknote, ArrowLeftRight,
-  Settings2, Sun, Moon, RefreshCw, ChevronRight
+  Settings2, Sun, Moon, RefreshCw, ChevronRight, LogOut, Upload
 } from "lucide-react";
 import { useState, useEffect } from "react";
+import { useAuth } from "@/hooks/use-auth";
+import Login from "@/pages/Login";
 
 const NAV = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/holdings", label: "Holdings", icon: Briefcase },
   { href: "/dividends", label: "Dividends", icon: Banknote },
   { href: "/transactions", label: "Transactions", icon: ArrowLeftRight },
+  { href: "/import", label: "Import", icon: Upload },
   { href: "/settings", label: "Settings", icon: Settings2 },
 ];
 
@@ -67,8 +71,20 @@ function Sidebar({ onClose }: { onClose?: () => void }) {
       </nav>
 
       {/* Footer */}
-      <div className="px-4 py-4 border-t border-[hsl(var(--sidebar-border))] text-[10px] text-[hsl(var(--sidebar-text-muted))]">
-        Local-first · Data stays on your machine
+      <div className="px-4 py-4 border-t border-[hsl(var(--sidebar-border))] flex flex-col gap-2">
+        <div className="text-[10px] text-[hsl(var(--sidebar-text-muted))]">
+          Local-first · Data stays on your machine
+        </div>
+        <button
+          onClick={() => {
+            fetch("/api/auth/logout", { method: "POST" }).then(() => {
+              window.location.reload();
+            });
+          }}
+          className="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground transition-colors"
+        >
+          <LogOut size={12} /> Logga ut
+        </button>
       </div>
     </aside>
   );
@@ -95,6 +111,15 @@ function ThemeToggle() {
 
 function AppShell() {
   const [mobileOpen, setMobileOpen] = useState(false);
+  const { user, isLoading } = useAuth();
+
+  if (isLoading) {
+    return <div className="flex items-center justify-center min-h-screen"><div className="animate-spin"><RefreshCw /></div></div>;
+  }
+
+  if (!user) {
+    return <Login />;
+  }
 
   return (
     <div className="dashboard-layout">
@@ -137,6 +162,7 @@ function AppShell() {
             <Route path="/holdings" component={Holdings} />
             <Route path="/dividends" component={Dividends} />
             <Route path="/transactions" component={Transactions} />
+            <Route path="/import" component={Import} />
             <Route path="/settings" component={Settings} />
             <Route component={NotFound} />
           </Switch>

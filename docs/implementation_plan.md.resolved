@@ -1,0 +1,353 @@
+# Authentication, DB Encryption & CSV Import
+
+Three features to add to the portfolio tracker: local authentication, encryption of the SQLite database at rest, and CSV import from Avanza, Nordnet, and Binance.
+
+---
+
+## User Review Required
+
+> [!IMPORTANT]
+> **Authentication model**: This plan uses a **single local user** with password-based authentication (no registration page). The password is set on first launch via a setup screen. This keeps it simple for a personal portfolio tracker. If you want multi-user support or OAuth, let me know.
+
+> [!IMPORTANT]
+> **DB Encryption key source**: The encryption key will be **derived from the user's password** (via PBKDF2). This means changing the password requires re-encrypting the database. An alternative would be a separate encryption passphrase stored in an env variable — let me know your preference.
+
+> [!WARNING]
+> **Breaking change**: Switching from `better-sqlite3` to `better-sqlite3-multiple-ciphers` replaces the native addon. The existing unencrypted `portfolio.db` will need a one-time migration to an encrypted format. The plan includes a migration script for this.
+
+---
+
+## Proposed Changes
+
+### Feature 1: Authentication
+
+The project already has `passport`, `passport-local`, `express-session`, and `memorystore` in `package.json` but none of them are wired up. We'll activate them.
+
+#### Architecture
+
+```mermaid
+sequenceDiagram
+    participant Browser
+    participant Express
+    participant Session Store
+    participant SQLite
+
+    Browser->>Express: POST /api/auth/login {password}
+    Express->>SQLite: Look up user record
+    SQLite-->>Express: {passwordHash, salt}
+    Express->>Express: Verify bcrypt hash
+    Express->>Session Store: Create session
+    Express-->>Browser: 200 + Set-Cookie
+
+    Browser->>Express: GET /api/holdings (with cookie)
+    Express->>Session Store: Validate session
+    Session Store-->>Express: OK
+    Express->>SQLite: Query holdings
+    Express-->>Browser: 200 + JSON
+```
+
+---
+
+#### [NEW] [server/auth.ts](file:///c:/projects/portfolio-tracker/server/auth.ts)
+
+New module that encapsulates all authentication logic:
+
+- **`users` table** schema (id, username, passwordHash) — single-row table
+- **`setupAuth(app)`** function:
+  - Configures `express-session` with `memorystore` (already a dependency)
+  - Configures `passport` with `passport-local` strategy
+  - Registers routes:
+    - `POST /api/auth/setup` — first-time password creation (only if no user exists)
+    - `POST /api/auth/login` — login with password
+    - `POST /api/auth/logout` — destroy session
+    - `GET /api/auth/me` — returns current user or 401
+  - Exports `requireAuth` middleware for protecting API routes
+- Password hashing via Node.js built-in `crypto.scrypt` (no new dependency needed)
+
+#### [MODIFY] [schema.ts](file:///c:/projects/portfolio-tracker/shared/schema.ts)
+
+- Add `users` table definition:
+  ```ts
+  export const users = sqliteTable("users", {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    username: text("username").notNull().default("admin"),
+    passwordHash: text("password_hash").notNull(),
+    salt: text("salt").notNull(),
+    createdAt: text("created_at").notNull(),
+  });
+  ```
+
+#### [MODIFY] [storage.ts](file:///c:/projects/portfolio-tracker/server/storage.ts)
+
+- Add `users` table to `CREATE TABLE IF NOT EXISTS` block
+- Add `getUser()`, `createUser()` methods to `IStorage` and implementation
+
+#### [MODIFY] [index.ts](file:///c:/projects/portfolio-tracker/server/index.ts)
+
+- Import and call `setupAuth(app)` before `registerRoutes()`
+
+#### [MODIFY] [routes.ts](file:///c:/projects/portfolio-tracker/server/routes.ts)
+
+- Add `requireAuth` middleware to all `/api/*` routes (except auth routes)
+
+---
+
+#### Client-side changes
+
+#### [NEW] [client/src/pages/Login.tsx](file:///c:/projects/portfolio-tracker/client/src/pages/Login.tsx)
+
+- Login page with password field and lock icon
+- First-time setup mode: "Set your password" form (shown when no user exists)
+- Redirects to Dashboard on success
+
+#### [NEW] [client/src/hooks/use-auth.ts](file:///c:/projects/portfolio-tracker/client/src/hooks/use-auth.ts)
+
+- `useAuth()` hook using `@tanstack/react-query` to call `GET /api/auth/me`
+- Returns `{ user, isLoading, isAuthenticated }`
+- Used by `App.tsx` to gate the entire app behind auth
+
+#### [MODIFY] [App.tsx](file:///c:/projects/portfolio-tracker/client/src/App.tsx)
+
+- Wrap the `AppShell` with auth check: if not authenticated → show `Login` page
+- Add logout button to sidebar footer
+
+#### [MODIFY] [queryClient.ts](file:///c:/projects/portfolio-tracker/client/src/lib/queryClient.ts)
+
+- Update `apiRequest` to include `credentials: "include"` for cookie-based sessions
+- Update `getQueryFn` fetch calls to also include credentials
+
+---
+
+### Feature 2: Database Encryption at Rest
+
+#### Approach
+
+Replace `better-sqlite3` with `better-sqlite3-multiple-ciphers`, which is a drop-in replacement that adds SQLCipher-compatible encryption. The API is identical — the only difference is two extra `PRAGMA` calls after opening the database.
+
+#### [MODIFY] [package.json](file:///c:/projects/portfolio-tracker/package.json)
+
+- Replace `"better-sqlite3": "^11.7.0"` → `"better-sqlite3-multiple-ciphers": "^11.7.0"`
+- Replace `"@types/better-sqlite3": "^7.6.12"` → `"@types/better-sqlite3": "^7.6.12"` (types are compatible)
+
+#### [MODIFY] [storage.ts](file:///c:/projects/portfolio-tracker/server/storage.ts)
+
+- Change import: `import Database from "better-sqlite3-multiple-ciphers"`
+- After opening the database, apply encryption pragmas:
+  ```ts
+  const sqlite = new Database("portfolio.db");
+  const key = process.env.DB_ENCRYPTION_KEY;
+  if (key) {
+    sqlite.pragma(`cipher='sqlcipher'`);
+    sqlite.pragma(`key='${key}'`);
+  }
+  ```
+- The key will be derived from the user's password and stored in a `.env`-style config, or we use a fixed key from an environment variable.
+
+> [!NOTE]
+> If deriving the key from the user's password, we need a two-phase startup: the server starts, serves the login page, and only opens the encrypted DB after the user provides the password. This adds complexity. **The simpler option is an environment variable `DB_ENCRYPTION_KEY`** set once during setup.
+
+#### [NEW] [server/migrate-encrypt.ts](file:///c:/projects/portfolio-tracker/server/migrate-encrypt.ts)
+
+One-time migration script to encrypt an existing unencrypted `portfolio.db`:
+
+1. Open old DB (unencrypted)
+2. Create new encrypted DB with `sqlcipher` pragmas
+3. Use `ATTACH` + `SELECT sqlcipher_export()` or dump/restore approach
+4. Replace old file with new one
+
+Run via: `npx tsx server/migrate-encrypt.ts`
+
+#### [MODIFY] [build.ts](file:///c:/projects/portfolio-tracker/script/build.ts)
+
+- Add `"better-sqlite3-multiple-ciphers"` to the allowlist (replace `"better-sqlite3"`)
+
+---
+
+### Feature 3: CSV Import (Avanza, Nordnet, Binance)
+
+#### Architecture
+
+```mermaid
+flowchart LR
+    A[Upload CSV] --> B{Detect Format}
+    B -->|Avanza| C[Parse Avanza]
+    B -->|Nordnet| D[Parse Nordnet]
+    B -->|Binance| E[Parse Binance]
+    C --> F[Normalize to internal format]
+    D --> F
+    E --> F
+    F --> G[Preview Table]
+    G --> H{User maps unknowns}
+    H --> I[Create assets/holdings/transactions]
+```
+
+The existing `POST /api/parse-transaction` endpoint is too limited (single line, no file upload). We'll build a proper CSV import pipeline.
+
+---
+
+#### [NEW] [server/importers/index.ts](file:///c:/projects/portfolio-tracker/server/importers/index.ts)
+
+Main importer orchestrator:
+- Accepts raw CSV string + source type (`avanza` | `nordnet` | `binance`)
+- Auto-detects format if source not specified (by checking header row)
+- Delegates to source-specific parser
+- Returns normalized `ImportRow[]`
+
+#### [NEW] [server/importers/avanza.ts](file:///c:/projects/portfolio-tracker/server/importers/avanza.ts)
+
+Parses Avanza CSV export:
+
+| Avanza Column | Maps to |
+|---|---|
+| `Datum` | `date` |
+| `Konto` | `account` |
+| `Typ av transaktion` | `type` (Köp→buy, Sälj→sell, Utdelning→dividend, etc.) |
+| `Värdepapper/beskrivning` | `assetName` |
+| `Antal` | `quantity` |
+| `Kurs` | `price` |
+| `Belopp` | `amount` |
+| `Courtage` | `fees` (may be a separate row — handled) |
+| `Valuta` | `currency` |
+| `ISIN` | `isin` |
+
+- Handles Swedish number format (comma decimal, space thousands)
+- Handles Swedish date format (`YYYY-MM-DD`)
+- Semicolon delimiter (`;`)
+
+#### [NEW] [server/importers/nordnet.ts](file:///c:/projects/portfolio-tracker/server/importers/nordnet.ts)
+
+Parses Nordnet CSV export:
+
+| Nordnet Column | Maps to |
+|---|---|
+| `Datum` | `date` |
+| `Transaktionstekst` / `Transaktionstyp` | `type` |
+| `Värdepapper` | `assetName` |
+| `ISIN` | `isin` |
+| `Antal` | `quantity` |
+| `Kurs` | `price` |
+| `Belopp` | `amount` |
+| `Kurtage` | `fees` |
+| `Valuta` | `currency` |
+
+- Also semicolon-delimited
+- Swedish number format
+- Column names may vary by language setting (Swedish/Norwegian/Danish) — we handle Swedish
+
+#### [NEW] [server/importers/binance.ts](file:///c:/projects/portfolio-tracker/server/importers/binance.ts)
+
+Parses Binance Spot Trade History CSV:
+
+| Binance Column | Maps to |
+|---|---|
+| `Date(UTC)` | `date` |
+| `Market` / `Pair` | Split into `baseAsset` + `quoteAsset` (e.g., `BTC/USDT` → BTC) |
+| `Type` | Side (`BUY`/`SELL`) |
+| `Price` | `price` |
+| `Amount` | `quantity` |
+| `Total` | `amount` |
+| `Fee` | `fees` |
+| `Fee Coin` | `feeCurrency` |
+
+- Comma-delimited CSV
+- Period decimal separator
+- Needs asset mapping: `BTCUSDT` → asset "Bitcoin", type "crypto", currency "USD"
+- The mapping table maps known Binance symbols to our asset types
+
+#### [NEW] [server/importers/types.ts](file:///c:/projects/portfolio-tracker/server/importers/types.ts)
+
+Shared types:
+```ts
+export interface ImportRow {
+  source: "avanza" | "nordnet" | "binance";
+  date: string;              // ISO YYYY-MM-DD
+  type: "buy" | "sell" | "dividend" | "deposit" | "withdrawal" | "fee" | "transfer";
+  assetName: string;
+  ticker?: string;
+  isin?: string;
+  quantity?: number;
+  price?: number;
+  amount: number;
+  fees: number;
+  currency: string;
+  account?: string;          // e.g., "Avanza ISK"
+  rawLine: string;           // original CSV line for audit
+  warnings: string[];        // parsing warnings
+}
+
+export interface ImportResult {
+  rows: ImportRow[];
+  unmappedAssets: string[];  // names not found in existing assets
+  errors: string[];
+  source: string;
+}
+```
+
+---
+
+#### Server routes
+
+#### [MODIFY] [routes.ts](file:///c:/projects/portfolio-tracker/server/routes.ts)
+
+Add new endpoints:
+
+- `POST /api/import/preview` — Accepts CSV file (multipart or JSON body with text content) + optional source hint. Returns `ImportResult` with parsed rows, warnings, and list of unmapped assets.
+- `POST /api/import/execute` — Accepts confirmed `ImportRow[]` with asset mappings. Creates assets/holdings/transactions in the DB.
+
+No new dependencies needed — we'll parse CSV manually (it's straightforward semi/comma-separated text). Could add `multer` for file upload, but it's already in the build allowlist and we can also accept the file content as a JSON string (simpler).
+
+---
+
+#### Client-side
+
+#### [NEW] [client/src/pages/Import.tsx](file:///c:/projects/portfolio-tracker/client/src/pages/Import.tsx)
+
+New page with a polished multi-step import wizard:
+
+1. **Upload Step**: Drag-and-drop zone or file picker, source selector (Avanza/Nordnet/Binance/Auto-detect)
+2. **Preview Step**: Table showing parsed transactions with color-coded status (✓ matched, ⚠ needs mapping, ✗ error)
+3. **Mapping Step**: For unmapped assets, user selects/creates matching assets from the DB or creates new ones inline
+4. **Confirm Step**: Summary of what will be created (N transactions, M new assets, K new holdings) with execute button
+5. **Result Step**: Success/error report
+
+#### [MODIFY] [App.tsx](file:///c:/projects/portfolio-tracker/client/src/App.tsx)
+
+- Add `/import` route to the router
+- Add Import nav item to sidebar (with `Upload` icon from lucide-react)
+
+---
+
+## Open Questions
+
+> [!IMPORTANT]
+> **Encryption key strategy**: Should the DB encryption key be:
+> - **(A)** An environment variable (`DB_ENCRYPTION_KEY`) set once — simpler, decoupled from auth
+> - **(B)** Derived from the user's login password — more convenient (no env var), but means the server can't read the DB until someone logs in, and password changes require re-encryption
+>
+> I recommend **(A)** for simplicity. The auth password and DB encryption are separate concerns.
+
+> [!IMPORTANT]
+> **Binance asset mapping**: Binance uses trading pairs like `BTCUSDT`, `ETHBUSD`. Should we:
+> - **(A)** Ship a built-in mapping table for common crypto tickers (BTC→Bitcoin, ETH→Ethereum, etc.) and let the user map unknowns during import
+> - **(B)** Always require manual mapping during import
+>
+> I recommend **(A)** — auto-map known ones, prompt for unknowns.
+
+> [!NOTE]
+> **CSV delimiter**: Avanza and Nordnet use `;` (semicolon) while Binance uses `,` (comma). The auto-detect logic will check the header row for known column names to determine the source and delimiter.
+
+---
+
+## Verification Plan
+
+### Automated Tests
+
+1. **Auth flow**: Browser subagent test — navigate to app → see login screen → enter password → see dashboard → logout → see login screen again
+2. **CSV parsing**: Unit-style verification — create test CSV strings for each broker format, POST to `/api/import/preview`, verify parsed output
+3. **Import execution**: POST parsed + mapped data to `/api/import/execute`, verify assets/holdings/transactions are created correctly
+
+### Manual Verification
+
+1. **DB Encryption**: Run `migrate-encrypt.ts`, then try to open `portfolio.db` with a plain SQLite client — should fail (encrypted). Open with correct key — should succeed.
+2. **CSV Import**: Download real export files from Avanza/Nordnet/Binance and import them through the UI
+3. **Full flow**: Start fresh → setup password → login → import CSV → verify data on dashboard
