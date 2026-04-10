@@ -4,7 +4,7 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import type { Asset, Holding, Dividend, FxRate } from "@shared/schema";
 import { formatSEK, formatCurrency, toSEK, yieldOnCost, CURRENCIES } from "@/lib/portfolio";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Trash2, TrendingUp } from "lucide-react";
+import { Plus, Trash2, TrendingUp, Pencil } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -71,7 +71,7 @@ function AddDividendModal({
               <SelectContent>
                 {holdings.map(h => {
                   const a = assetMap.get(h.assetId);
-                  return <SelectItem key={h.id} value={String(h.id)}>{a?.name ?? "?"} — {h.account}</SelectItem>;
+                  return <SelectItem key={h.id} value={String(h.id)}>{a?.name ?? "?"} ({a?.currency ?? "?"}) — {h.account}</SelectItem>;
                 })}
               </SelectContent>
             </Select>
@@ -132,9 +132,140 @@ function AddDividendModal({
   );
 }
 
+// ─── Edit Dividend Modal ──────────────────────────────────────────────────────
+function EditDividendModal({
+  dividend, onClose, holdings, assets
+}: {
+  dividend: Dividend | null; onClose: () => void; holdings: Holding[]; assets: Asset[];
+}) {
+  const { toast } = useToast();
+  const assetMap = new Map(assets.map(a => [a.id, a]));
+  const [holdingId, setHoldingId] = useState("");
+  const [date, setDate] = useState("");
+  const [amount, setAmount] = useState("");    // per share
+  const [currency, setCurrency] = useState("SEK");
+  const [notes, setNotes] = useState("");
+
+  // Sync state when dividend changes
+  if (dividend && holdingId !== String(dividend.holdingId)) {
+    setHoldingId(String(dividend.holdingId));
+    setDate(dividend.date);
+    setAmount(String(dividend.amount));
+    setCurrency(dividend.currency);
+    setNotes(dividend.notes || "");
+  }
+
+  const selectedHolding = holdings.find(h => String(h.id) === holdingId);
+  const totalAmount = selectedHolding && amount
+    ? selectedHolding.quantity * Number(amount)
+    : 0;
+
+  const updateDiv = useMutation({
+    mutationFn: (body: any) => apiRequest("PATCH", `/api/dividends/${dividend?.id}`, body),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/dividends"] });
+      toast({ title: "Utdelning uppdaterad" });
+      onClose();
+    },
+    onError: () => toast({ title: "Fel", description: "Kunde inte uppdatera utdelning.", variant: "destructive" }),
+  });
+
+  const handleSubmit = () => {
+    if (!holdingId || !amount) {
+      toast({ title: "Fyll i alla obligatoriska fält", variant: "destructive" });
+      return;
+    }
+    updateDiv.mutate({
+      holdingId: Number(holdingId),
+      date,
+      amount: Number(amount),
+      totalAmount: totalAmount,
+      currency,
+      notes: notes || null,
+    });
+  };
+
+  if (!dividend) return null;
+
+  return (
+    <Dialog open={!!dividend} onOpenChange={onClose}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Redigera utdelning</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div>
+            <label className="text-sm font-medium mb-1.5 block">Innehav *</label>
+            <Select value={holdingId} onValueChange={setHoldingId}>
+              <SelectTrigger>
+                <SelectValue placeholder="Välj innehav..." />
+              </SelectTrigger>
+              <SelectContent>
+                {holdings.map(h => {
+                  const a = assetMap.get(h.assetId);
+                  return <SelectItem key={h.id} value={String(h.id)}>{a?.name ?? "?"} ({a?.currency ?? "?"}) — {h.account}</SelectItem>;
+                })}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-sm font-medium mb-1.5 block">Utdelning / aktie *</label>
+              <Input
+                type="number" step="any" placeholder="2.50"
+                value={amount} onChange={e => setAmount(e.target.value)}
+                className="tabular-nums"
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium mb-1.5 block">Valuta *</label>
+              <Select value={currency} onValueChange={setCurrency}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {CURRENCIES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          {totalAmount > 0 && (
+            <div className="p-3 bg-dividend-subtle rounded-md text-sm">
+              <span className="text-muted-foreground">Totalt mottaget: </span>
+              <span className="font-semibold text-dividend tabular-nums">
+                {totalAmount.toFixed(2)} {currency}
+              </span>
+              <span className="text-xs text-muted-foreground ml-2">
+                ({selectedHolding?.quantity.toFixed(2)} × {Number(amount).toFixed(2)})
+              </span>
+            </div>
+          )}
+          <div>
+            <label className="text-sm font-medium mb-1.5 block">Datum</label>
+            <Input type="date" value={date} onChange={e => setDate(e.target.value)} />
+          </div>
+          <div>
+            <label className="text-sm font-medium mb-1.5 block">Anteckning</label>
+            <Input placeholder="Valfri kommentar" value={notes} onChange={e => setNotes(e.target.value)} />
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <button onClick={onClose} className="px-4 py-2 text-sm rounded-md bg-secondary text-secondary-foreground">Avbryt</button>
+            <button
+              onClick={handleSubmit}
+              disabled={updateDiv.isPending}
+              className="px-4 py-2 text-sm rounded-md bg-accent text-accent-foreground disabled:opacity-60"
+            >
+              {updateDiv.isPending ? "Sparar…" : "Spara"}
+            </button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export default function Dividends() {
   const { toast } = useToast();
   const [showAdd, setShowAdd] = useState(false);
+  const [editingDiv, setEditingDiv] = useState<Dividend | null>(null);
 
   const { data: assets = [] } = useQuery<Asset[]>({ queryKey: ["/api/assets"] });
   const { data: holdings = [] } = useQuery<Holding[]>({ queryKey: ["/api/holdings"] });
@@ -284,12 +415,20 @@ export default function Dividends() {
                       <td className="px-4 py-3 text-right tabular-nums font-medium text-dividend">{d.totalAmount.toFixed(2)} {d.currency}</td>
                       <td className="px-5 py-3 text-right tabular-nums">{formatSEK(sek)}</td>
                       <td className="px-5 py-3 text-right">
-                        <button
-                          onClick={() => deleteDiv.mutate(d.id)}
-                          className="p-1.5 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
-                        >
-                          <Trash2 size={13} />
-                        </button>
+                        <div className="flex items-center justify-end gap-1">
+                          <button
+                            onClick={() => setEditingDiv(d)}
+                            className="p-1.5 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                          >
+                            <Pencil size={13} />
+                          </button>
+                          <button
+                            onClick={() => { if (confirm("Ta bort utdelning?")) deleteDiv.mutate(d.id); }}
+                            className="p-1.5 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -301,6 +440,7 @@ export default function Dividends() {
       </div>
 
       <AddDividendModal open={showAdd} onClose={() => setShowAdd(false)} holdings={holdings} assets={assets} />
+      <EditDividendModal dividend={editingDiv} onClose={() => setEditingDiv(null)} holdings={holdings} assets={assets} />
     </div>
   );
 }

@@ -116,12 +116,14 @@ export interface IStorage {
   getTransactions(): Transaction[];
   getTransactionsByHolding(holdingId: number): Transaction[];
   createTransaction(data: InsertTransaction): Transaction;
+  updateTransaction(id: number, data: Partial<InsertTransaction>): Transaction;
   deleteTransaction(id: number): void;
 
   // Dividends
   getDividends(): Dividend[];
   getDividendsByHolding(holdingId: number): Dividend[];
   createDividend(data: InsertDividend): Dividend;
+  updateDividend(id: number, data: Partial<InsertDividend>): Dividend;
   deleteDividend(id: number): void;
 
   // FX Rates
@@ -192,6 +194,9 @@ export const storage: IStorage = {
   createTransaction(data) {
     return db.insert(transactions).values(data).returning().get();
   },
+  updateTransaction(id, data) {
+    return db.update(transactions).set(data).where(eq(transactions.id, id)).returning().get();
+  },
   deleteTransaction(id) {
     db.delete(transactions).where(eq(transactions.id, id)).run();
   },
@@ -205,6 +210,9 @@ export const storage: IStorage = {
   },
   createDividend(data) {
     return db.insert(dividends).values(data).returning().get();
+  },
+  updateDividend(id, data) {
+    return db.update(dividends).set(data).where(eq(dividends.id, id)).returning().get();
   },
   deleteDividend(id) {
     db.delete(dividends).where(eq(dividends.id, id)).run();

@@ -3,10 +3,12 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import type { Asset, Holding, Transaction } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
-import { Trash2, Filter } from "lucide-react";
+import { Trash2, Filter, Pencil } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { useForm } from "react-hook-form";
 
 const TX_TYPE_LABELS: Record<string, string> = {
   buy: "Köp",
@@ -24,10 +26,123 @@ const TX_TYPE_COLORS: Record<string, string> = {
   transfer: "text-muted-foreground",
 };
 
+// ─── Edit Transaction Modal ───────────────────────────────────────────────────
+function EditTransactionModal({ tx, assets, holdings, onClose }: { tx: Transaction | null; assets: Asset[]; holdings: Holding[]; onClose: () => void }) {
+  const { toast } = useToast();
+  const form = useForm({
+    values: {
+      date: tx ? tx.date : "",
+      type: tx ? tx.type : "",
+      quantity: tx && tx.quantity != null ? String(tx.quantity) : "",
+      price: tx && tx.price != null ? String(tx.price) : "",
+      amount: tx ? String(tx.amount) : "",
+      fees: tx ? String(tx.fees) : "",
+      holdingId: tx ? String(tx.holdingId) : "",
+    },
+  });
+
+  const updateTx = useMutation({
+    mutationFn: (data: any) => apiRequest("PATCH", `/api/transactions/${tx?.id}`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/transactions"] });
+      toast({ title: "Transaktion uppdaterad" });
+      onClose();
+    },
+  });
+
+  if (!tx) return null;
+
+  return (
+    <Dialog open={!!tx} onOpenChange={onClose}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Redigera transaktion</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={form.handleSubmit(d => updateTx.mutate({
+          date: d.date,
+          type: d.type,
+          quantity: d.quantity ? Number(d.quantity) : null,
+          price: d.price ? Number(d.price) : null,
+          amount: Number(d.amount),
+          fees: Number(d.fees),
+          holdingId: Number(d.holdingId),
+        }))} className="space-y-4">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-sm font-medium mb-1.5 block">Datum *</label>
+              <Input type="date" {...form.register("date")} />
+            </div>
+            <div>
+              <label className="text-sm font-medium mb-1.5 block">Typ *</label>
+              <Select value={form.watch("type")} onValueChange={v => form.setValue("type", v)}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="buy">Köp</SelectItem>
+                  <SelectItem value="sell">Sälj</SelectItem>
+                  <SelectItem value="deposit">Insättning</SelectItem>
+                  <SelectItem value="withdrawal">Uttag</SelectItem>
+                  <SelectItem value="transfer">Överföring</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <div>
+            <label className="text-sm font-medium mb-1.5 block">Innehav *</label>
+            <Select value={form.watch("holdingId")} onValueChange={v => form.setValue("holdingId", v)}>
+              <SelectTrigger>
+                <SelectValue placeholder="Välj innehav..." />
+              </SelectTrigger>
+              <SelectContent>
+                {holdings.map(h => {
+                  const a = assets.find(asset => asset.id === h.assetId);
+                  return (
+                    <SelectItem key={h.id} value={String(h.id)}>
+                      {a ? `${a.name} (${a.currency}) - ` : ""}{h.account}
+                    </SelectItem>
+                  );
+                })}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-sm font-medium mb-1.5 block">Antal</label>
+              <Input type="number" step="any" {...form.register("quantity")} />
+            </div>
+            <div>
+              <label className="text-sm font-medium mb-1.5 block">Pris per st</label>
+              <Input type="number" step="any" {...form.register("price")} />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-sm font-medium mb-1.5 block">Totalt belopp *</label>
+              <Input type="number" step="any" {...form.register("amount")} />
+            </div>
+            <div>
+              <label className="text-sm font-medium mb-1.5 block">Courtage / Avgifter</label>
+              <Input type="number" step="any" {...form.register("fees")} />
+            </div>
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <button type="button" onClick={onClose} className="px-4 py-2 text-sm rounded-md bg-secondary text-secondary-foreground">Avbryt</button>
+            <button type="submit" disabled={updateTx.isPending} className="px-4 py-2 text-sm rounded-md bg-primary text-primary-foreground">
+              {updateTx.isPending ? "Sparar…" : "Spara"}
+            </button>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export default function Transactions() {
   const { toast } = useToast();
   const [typeFilter, setTypeFilter] = useState("all");
   const [search, setSearch] = useState("");
+  const [editingTx, setEditingTx] = useState<Transaction | null>(null);
 
   const { data: assets = [] } = useQuery<Asset[]>({ queryKey: ["/api/assets"] });
   const { data: holdings = [] } = useQuery<Holding[]>({ queryKey: ["/api/holdings"] });
@@ -160,12 +275,20 @@ export default function Transactions() {
                         {tx.fees > 0 ? tx.fees.toFixed(2) : "—"}
                       </td>
                       <td className="px-5 py-3 text-right">
-                        <button
-                          onClick={() => deleteTx.mutate(tx.id)}
-                          className="p-1.5 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
-                        >
-                          <Trash2 size={13} />
-                        </button>
+                        <div className="flex items-center justify-end gap-1">
+                          <button
+                            onClick={() => setEditingTx(tx)}
+                            className="p-1.5 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                          >
+                            <Pencil size={13} />
+                          </button>
+                          <button
+                            onClick={() => { if (confirm("Ta bort transaktion?")) deleteTx.mutate(tx.id); }}
+                            className="p-1.5 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -175,6 +298,8 @@ export default function Transactions() {
           </div>
         )}
       </div>
+
+      <EditTransactionModal tx={editingTx} assets={assets} holdings={holdings} onClose={() => setEditingTx(null)} />
     </div>
   );
 }

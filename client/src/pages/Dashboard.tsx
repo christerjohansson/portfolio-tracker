@@ -326,9 +326,12 @@ export default function Dashboard() {
                       <div className="font-medium">{asset.name}</div>
                       <div className="text-xs text-muted-foreground">{asset.ticker || "—"} · {h.account}</div>
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-3 flex gap-1 items-center">
                       <span className={`px-2 py-0.5 rounded text-[11px] font-medium badge-${asset.type.replace("_", "-")}`}>
                         {ASSET_TYPE_LABELS[asset.type]}
+                      </span>
+                      <span className="px-1.5 py-0.5 rounded border border-border text-[10px] font-semibold uppercase text-muted-foreground bg-muted/20">
+                        {asset.currency}
                       </span>
                     </td>
                     <td className="px-4 py-3 text-right tabular-nums text-muted-foreground">

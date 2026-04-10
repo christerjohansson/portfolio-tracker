@@ -205,6 +205,12 @@ export function registerRoutes(httpServer: Server, app: Express) {
     res.json({ ok: true });
   });
 
+  app.patch("/api/transactions/:id", (req, res) => {
+    const parse = insertTransactionSchema.partial().safeParse(req.body);
+    if (!parse.success) return res.status(400).json({ error: parse.error.flatten() });
+    res.json(storage.updateTransaction(Number(req.params.id), parse.data));
+  });
+
   // ─── Dividends ──────────────────────────────────────────────────────────────
   app.get("/api/dividends", (_req, res) => {
     res.json(storage.getDividends());
@@ -223,6 +229,12 @@ export function registerRoutes(httpServer: Server, app: Express) {
   app.delete("/api/dividends/:id", (req, res) => {
     storage.deleteDividend(Number(req.params.id));
     res.json({ ok: true });
+  });
+
+  app.patch("/api/dividends/:id", (req, res) => {
+    const parse = insertDividendSchema.partial().safeParse(req.body);
+    if (!parse.success) return res.status(400).json({ error: parse.error.flatten() });
+    res.json(storage.updateDividend(Number(req.params.id), parse.data));
   });
 
   // ─── FX Rates ──────────────────────────────────────────────────────────────

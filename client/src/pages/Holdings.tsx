@@ -181,7 +181,7 @@ function AddHoldingModal({ open, onClose, assets }: { open: boolean; onClose: ()
                 <SelectValue placeholder="Välj tillgång..." />
               </SelectTrigger>
               <SelectContent>
-                {assets.map(a => <SelectItem key={a.id} value={String(a.id)}>{a.name} ({a.ticker || a.type})</SelectItem>)}
+                {assets.map(a => <SelectItem key={a.id} value={String(a.id)}>{a.name} ({a.ticker || a.type}) - {a.currency}</SelectItem>)}
               </SelectContent>
             </Select>
           </div>
@@ -223,11 +223,100 @@ function AddHoldingModal({ open, onClose, assets }: { open: boolean; onClose: ()
   );
 }
 
+// ─── Edit Holding Modal ───────────────────────────────────────────────────────
+function EditHoldingModal({ holding, assets, onClose }: { holding: Holding | null; assets: Asset[]; onClose: () => void }) {
+  const { toast } = useToast();
+  const form = useForm({
+    values: {
+      assetId: holding ? String(holding.assetId) : "",
+      account: holding ? holding.account : "",
+      quantity: holding ? String(holding.quantity) : "",
+      costBasis: holding ? String(holding.costBasis) : "",
+      currentPrice: holding && holding.currentPrice !== null ? String(holding.currentPrice) : "",
+      manualPrice: holding ? holding.manualPrice : false,
+    },
+  });
+
+  const updateHolding = useMutation({
+    mutationFn: (data: any) => apiRequest("PATCH", `/api/holdings/${holding?.id}`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/holdings"] });
+      toast({ title: "Innehav uppdaterat" });
+      onClose();
+    },
+  });
+
+  return (
+    <Dialog open={!!holding} onOpenChange={onClose}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Redigera innehav</DialogTitle>
+        </DialogHeader>
+        {holding && (
+          <form onSubmit={form.handleSubmit(d => updateHolding.mutate({
+            assetId: Number(d.assetId),
+            account: d.account,
+            quantity: Number(d.quantity),
+            costBasis: Number(d.costBasis),
+            currentPrice: d.currentPrice ? Number(d.currentPrice) : null,
+            manualPrice: d.manualPrice,
+          }))} className="space-y-4">
+            <div>
+              <label className="text-sm font-medium mb-1.5 block">Tillgång *</label>
+              <Select value={form.watch("assetId")} onValueChange={v => form.setValue("assetId", v)}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Välj tillgång..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {assets.map(a => <SelectItem key={a.id} value={String(a.id)}>{a.name} ({a.ticker || a.type}) - {a.currency}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <label className="text-sm font-medium mb-1.5 block">Konto / Depå *</label>
+              <Input placeholder="t.ex. Avanza ISK" {...form.register("account")} />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-sm font-medium mb-1.5 block">Antal</label>
+                <Input type="number" step="any" {...form.register("quantity")} />
+              </div>
+              <div>
+                <label className="text-sm font-medium mb-1.5 block">Anskaffningsvärde</label>
+                <Input type="number" step="any" {...form.register("costBasis")} />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-sm font-medium mb-1.5 block">Aktuellt pris</label>
+                <Input type="number" step="any" placeholder="Auto" {...form.register("currentPrice")} />
+              </div>
+              <div className="flex items-end pb-1">
+                <label className="flex items-center gap-2 text-sm cursor-pointer">
+                  <input type="checkbox" {...form.register("manualPrice")} className="w-4 h-4" />
+                  Manuellt pris
+                </label>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <button type="button" onClick={onClose} className="px-4 py-2 text-sm rounded-md bg-secondary text-secondary-foreground hover:bg-secondary/80">Avbryt</button>
+              <button type="submit" disabled={updateHolding.isPending} className="px-4 py-2 text-sm rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-60">
+                {updateHolding.isPending ? "Sparar…" : "Spara ändringar"}
+              </button>
+            </div>
+          </form>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // ─── Holdings Page ────────────────────────────────────────────────────────────
 export default function Holdings() {
   const { toast } = useToast();
   const [showAddAsset, setShowAddAsset] = useState(false);
   const [showAddHolding, setShowAddHolding] = useState(false);
+  const [editingHolding, setEditingHolding] = useState<Holding | null>(null);
   const [activeGroup, setActiveGroup] = useState<string | null>(null);
   const [filter, setFilter] = useState("");
 
@@ -338,8 +427,13 @@ export default function Holdings() {
                     {group.rows.map(({ h, asset, valueSEK, gainPct, gainNative }) => (
                       <tr key={h.id} className="border-b border-border/40 hover:bg-muted/20 transition-colors">
                         <td className="px-5 py-3">
-                          <div className="font-medium">{asset.name}</div>
-                          <div className="text-xs text-muted-foreground">
+                          <div className="font-medium flex items-center gap-1.5">
+                            {asset.name}
+                            <span className="px-1.5 py-0.5 rounded border border-border text-[10px] font-semibold uppercase text-muted-foreground bg-muted/20">
+                              {asset.currency}
+                            </span>
+                          </div>
+                          <div className="text-xs text-muted-foreground mt-0.5">
                             {asset.ticker ? `${asset.ticker} · ` : ""}{h.account}
                             {h.manualPrice && <span className="ml-1 text-dividend">(manuellt pris)</span>}
                           </div>
@@ -373,6 +467,13 @@ export default function Holdings() {
                             >
                               <Trash2 size={13} />
                             </button>
+                            <button
+                              onClick={() => setEditingHolding(h)}
+                              title="Redigera"
+                              className="p-1.5 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                            >
+                              <Pencil size={13} />
+                            </button>
                           </div>
                         </td>
                       </tr>
@@ -387,6 +488,7 @@ export default function Holdings() {
 
       <AddAssetModal open={showAddAsset} onClose={() => setShowAddAsset(false)} />
       <AddHoldingModal open={showAddHolding} onClose={() => setShowAddHolding(false)} assets={assets} />
+      <EditHoldingModal holding={editingHolding} assets={assets} onClose={() => setEditingHolding(null)} />
     </div>
   );
 }
