@@ -20,13 +20,14 @@ import { z } from "zod";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 
 const ASSET_TYPES = [
-  "stock_se", "stock_us", "stock_ca", "crypto", "fund_se", "fund_us", "fund_de", "cash"
+  "stock_se", "stock_us", "stock_ca", "stock_no", "crypto", "fund_se", "fund_us", "fund_de", "etf_se", "etf_us", "etf_de", "etf_ca", "etf_no", "cash"
 ] as const;
 
 const TYPE_GROUPS = [
-  { label: "Aktier", types: ["stock_se", "stock_us", "stock_ca"] },
+  { label: "Aktier", types: ["stock_se", "stock_us", "stock_ca", "stock_no"] },
   { label: "Krypto", types: ["crypto"] },
   { label: "Fonder", types: ["fund_se", "fund_us", "fund_de"] },
+  { label: "ETF", types: ["etf_se", "etf_us", "etf_de", "etf_ca", "etf_no"] },
   { label: "Kassa", types: ["cash"] },
 ];
 

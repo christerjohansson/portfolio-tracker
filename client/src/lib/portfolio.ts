@@ -69,16 +69,22 @@ export function formatNumber(value: number, decimals = 4): string {
   }).format(value);
 }
 
-export type AssetType = "stock_se" | "stock_us" | "stock_ca" | "crypto" | "fund_se" | "fund_us" | "fund_de" | "cash";
+export type AssetType = "stock_se" | "stock_us" | "stock_ca" | "stock_no" | "crypto" | "fund_se" | "fund_us" | "fund_de" | "etf_se" | "etf_us" | "etf_ca" | "etf_de" | "etf_no" | "cash";
 
 export const ASSET_TYPE_LABELS: Record<string, string> = {
   stock_se: "SE Stock",
   stock_us: "US Stock",
   stock_ca: "CA Stock",
+  stock_no: "NO Stock",
   crypto: "Crypto",
   fund_se: "SE Fund",
   fund_us: "US Fund",
   fund_de: "DE Fund",
+  etf_se: "SE ETF",
+  etf_us: "US ETF",
+  etf_ca: "CA ETF",
+  etf_de: "DE ETF",
+  etf_no: "NO ETF",
   cash: "Cash",
 };
 
@@ -86,14 +92,20 @@ export const ASSET_TYPE_CURRENCIES: Record<string, string> = {
   stock_se: "SEK",
   stock_us: "USD",
   stock_ca: "CAD",
+  stock_no: "NOK",
   crypto: "USD",
   fund_se: "SEK",
   fund_us: "USD",
   fund_de: "EUR",
+  etf_se: "SEK",
+  etf_us: "USD",
+  etf_ca: "CAD",
+  etf_de: "EUR",
+  etf_no: "NOK",
   cash: "SEK",
 };
 
-export const CURRENCIES = ["SEK", "USD", "CAD", "EUR"] as const;
+export const CURRENCIES = ["SEK", "USD", "CAD", "EUR", "NOK"] as const;
 
 export interface PortfolioSummary {
   totalValueSEK: number;

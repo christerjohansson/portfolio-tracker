@@ -14,15 +14,15 @@ export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
 
 // ─── Asset Types ────────────────────────────────────────────────────────────
-// type: "stock_se" | "stock_us" | "stock_ca" | "crypto" | "fund_se" | "fund_us" | "fund_de" | "cash"
-// currency: "SEK" | "USD" | "CAD" | "EUR"
+// type: "stock_se" | "stock_us" | "stock_ca" | "stock_no" | "crypto" | "fund_se" | "fund_us" | "fund_de" | "etf_se" | "etf_us" | "etf_ca" | "etf_de" | "etf_no" | "cash"
+// currency: "SEK" | "USD" | "CAD" | "EUR" | "NOK"
 
 export const assets = sqliteTable("assets", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   name: text("name").notNull(),
   ticker: text("ticker"),                       // e.g. "ERIC-B", "BTC", null for cash
-  type: text("type").notNull(),                 // stock_se|stock_us|stock_ca|crypto|fund_se|fund_us|fund_de|cash
-  currency: text("currency").notNull(),         // SEK|USD|CAD|EUR
+  type: text("type").notNull(),                 // stock_se|stock_us|stock_ca|stock_no|crypto|fund_se|fund_us|fund_de|etf_se|etf_us|etf_ca|etf_de|etf_no|cash
+  currency: text("currency").notNull(),         // SEK|USD|CAD|EUR|NOK
   exchange: text("exchange"),                   // e.g. "STO", "NASDAQ", "TSX"
   isin: text("isin"),                           // for funds/stocks
   notes: text("notes"),
@@ -93,7 +93,7 @@ export type Dividend = typeof dividends.$inferSelect;
 
 export const fxRates = sqliteTable("fx_rates", {
   id: integer("id").primaryKey({ autoIncrement: true }),
-  currency: text("currency").notNull().unique(),  // USD|CAD|EUR
+  currency: text("currency").notNull().unique(),  // USD|CAD|EUR|NOK
   rateSek: real("rate_sek").notNull(),             // 1 currency = N SEK
   updatedAt: text("updated_at").notNull(),
 });

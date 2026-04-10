@@ -10,9 +10,10 @@ import type { ImportRow } from "./importers/types";
 async function fetchYahooPrice(ticker: string, type: string): Promise<number | null> {
   try {
     const suffix =
-      type === "stock_se" ? ".ST" :
-      type === "stock_ca" ? ".TO" :
-      type === "fund_se" ? ".ST" : "";
+      type === "stock_se" || type === "fund_se" || type === "etf_se" ? ".ST" :
+      type === "stock_ca" || type === "etf_ca" ? ".TO" :
+      type === "stock_no" || type === "etf_no" ? ".OL" :
+      type === "etf_de" ? ".DE" : "";
     const symbol = encodeURIComponent(ticker + suffix);
     const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=1d`;
     const res = await fetch(url, {
@@ -59,8 +60,9 @@ async function fetchFxRates(): Promise<Record<string, number> | null> {
     const usd = json?.rates?.USD ? 1 / json.rates.USD : null;
     const eur = json?.rates?.EUR ? 1 / json.rates.EUR : null;
     const cad = json?.rates?.CAD ? 1 / json.rates.CAD : null;
-    if (!usd || !eur || !cad) return null;
-    return { USD: usd, EUR: eur, CAD: cad };
+    const nok = json?.rates?.NOK ? 1 / json.rates.NOK : null;
+    if (!usd || !eur || !cad || !nok) return null;
+    return { USD: usd, EUR: eur, CAD: cad, NOK: nok };
   } catch {
     return null;
   }

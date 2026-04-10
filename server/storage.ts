@@ -86,6 +86,7 @@ if (existingRates.length === 0) {
     { currency: "USD", rateSek: 10.45, updatedAt: now },
     { currency: "CAD", rateSek: 7.70, updatedAt: now },
     { currency: "EUR", rateSek: 11.20, updatedAt: now },
+    { currency: "NOK", rateSek: 0.98, updatedAt: now },
   ]).run();
 }
 
