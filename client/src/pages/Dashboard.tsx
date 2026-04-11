@@ -1,7 +1,7 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import type { Asset, Holding, Dividend, FxRate } from "@shared/schema";
-import { buildPortfolioSummary, formatSEK, formatPct, toSEK, holdingMarketValue, holdingGainLossPct, ASSET_TYPE_LABELS } from "@/lib/portfolio";
+import { buildPortfolioSummary, formatSEK, formatPct, toSEK, holdingMarketValue, holdingGainLossPct, ASSET_TYPE_LABELS, enrichWithDividendCash } from "@/lib/portfolio";
 import {
   TrendingUp, TrendingDown, RefreshCw, Wallet, Coins,
   Banknote, PiggyBank, AlertCircle
@@ -10,7 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 import {
   PieChart, Pie, Cell, Tooltip, ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid
 } from "recharts";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useMemo } from "react";
 import { AddQuickEntry } from "@/components/AddQuickEntry";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -108,11 +108,13 @@ export default function Dashboard() {
     onError: () => toast({ title: "Refresh failed", description: "Could not reach price APIs.", variant: "destructive" }),
   });
 
-  const summary = buildPortfolioSummary(holdings, assets, dividends, fxRates);
+  const { augmentedHoldings, augmentedAssets } = useMemo(() => enrichWithDividendCash(holdings, assets, dividends), [holdings, assets, dividends]);
+  
+  const summary = buildPortfolioSummary(augmentedHoldings, augmentedAssets, dividends, fxRates);
 
   // Top holdings by value
-  const assetMap = new Map(assets.map(a => [a.id, a]));
-  const holdingsSorted = [...holdings]
+  const assetMap = new Map(augmentedAssets.map(a => [a.id, a]));
+  const holdingsSorted = [...augmentedHoldings]
     .filter(h => h.currentPrice)
     .map(h => {
       const asset = assetMap.get(h.assetId);
@@ -167,7 +169,7 @@ export default function Dashboard() {
         <KPICard
           label="Totalt förmögenhetsvärde"
           value={loading ? "—" : formatSEK(summary.totalValueSEK)}
-          sub={loading ? undefined : `Kostnad: ${formatSEK(summary.totalCostSEK)}`}
+          sub={loading ? undefined : `Kostnad: ${formatSEK(summary.totalCostSEK)} · Kassa: ${formatSEK(summary.cashBalanceSEK)}`}
           icon={Wallet}
           loading={loading}
         />
@@ -180,9 +182,9 @@ export default function Dashboard() {
           loading={loading}
         />
         <KPICard
-          label="Total utdelning (YTD)"
+          label="Total utdelning"
           value={loading ? "—" : formatSEK(summary.totalDividendsSEK)}
-          sub={loading ? undefined : `YoC: ${summary.totalCostSEK > 0 ? ((summary.totalDividendsSEK / summary.totalCostSEK) * 100).toFixed(2) + "%" : "—"}`}
+          sub={loading ? undefined : `YoC: ${summary.totalCostSEK > 0 ? ((summary.totalDividendsSEK / summary.totalCostSEK) * 100).toFixed(2) + "%" : "—"} · Kassa: ${formatSEK(summary.cashBalanceSEK)}`}
           icon={Banknote}
           color="dividend"
           loading={loading}

@@ -77,6 +77,40 @@ export function registerRoutes(httpServer: Server, app: Express) {
     return requireAuth(req, res, next);
   });
 
+  // ─── Ticker Search (Yahoo Finance) ──────────────────────────────────────────
+  app.get("/api/search/ticker", async (req, res) => {
+    const q = String(req.query.q || "").trim();
+    if (q.length < 1) return res.json({ local: [], remote: [] });
+
+    // 1. Search local assets
+    const allAssets = storage.getAssets();
+    const local = allAssets.filter(a =>
+      (a.ticker && a.ticker.toLowerCase().includes(q.toLowerCase())) ||
+      a.name.toLowerCase().includes(q.toLowerCase())
+    ).slice(0, 10);
+
+    // 2. Search Yahoo Finance
+    let remote: any[] = [];
+    try {
+      const url = `https://query1.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(q)}&quotesCount=8&newsCount=0&enableFuzzyQuery=false&quotesQueryId=tss_match_phrase_query`;
+      const r = await fetch(url, {
+        headers: { "User-Agent": "Mozilla/5.0" },
+        signal: AbortSignal.timeout(6000),
+      });
+      if (r.ok) {
+        const json = await r.json() as any;
+        remote = (json?.quotes || []).map((q: any) => ({
+          symbol: q.symbol,
+          name: q.shortname || q.longname || q.symbol,
+          exchange: q.exchange || q.exchDisp || "",
+          type: q.quoteType || "", // EQUITY, ETF, MUTUALFUND, CRYPTOCURRENCY
+        }));
+      }
+    } catch { /* ignore */ }
+
+    res.json({ local, remote });
+  });
+
   // ─── Assets ──────────────────────────────────────────────────────────────
   app.get("/api/assets", (_req, res) => {
     res.json(storage.getAssets());

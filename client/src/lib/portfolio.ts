@@ -14,6 +14,72 @@ export function holdingMarketValue(h: Holding): number {
   return h.quantity * h.currentPrice;
 }
 
+// Generates virtual cash holdings by aggregating dividends into the respective accounts
+export function enrichWithDividendCash(
+  holdings: Holding[],
+  assets: Asset[],
+  dividends: Dividend[]
+): { augmentedHoldings: Holding[], augmentedAssets: Asset[] } {
+  const cashByAccountCurrency: Record<string, number> = {};
+  const holdingMap = new Map(holdings.map(h => [h.id, h]));
+  
+  for (const d of dividends) {
+    const h = holdingMap.get(d.holdingId);
+    if (!h) continue;
+    const key = `${h.account}|${d.currency}`;
+    cashByAccountCurrency[key] = (cashByAccountCurrency[key] || 0) + d.totalAmount;
+  }
+
+  const augmentedHoldings = [...holdings];
+  const augmentedAssets = [...assets];
+  
+  for (const [key, amount] of Object.entries(cashByAccountCurrency)) {
+    const [account, currency] = key.split("|");
+    
+    let foundHolding = false;
+    for (let i = 0; i < augmentedHoldings.length; i++) {
+        const h = augmentedHoldings[i];
+        if (h.account === account) {
+            const a = augmentedAssets.find(x => x.id === h.assetId);
+            if (a && a.type === "cash" && a.currency === currency) {
+                augmentedHoldings[i] = { ...h, quantity: h.quantity + amount };
+                foundHolding = true;
+                break;
+            }
+        }
+    }
+    
+    if (!foundHolding) {
+        let asset = augmentedAssets.find(a => a.type === "cash" && a.currency === currency);
+        if (!asset) {
+            asset = {
+                id: -Math.floor(Math.random() * 1000000),
+                name: `Cash ${currency}`,
+                type: "cash",
+                currency: currency,
+                ticker: null, exchange: null, isin: null, notes: null, isActive: 1
+            };
+            augmentedAssets.push(asset);
+        }
+        
+        augmentedHoldings.push({
+            id: -Math.floor(Math.random() * 1000000),
+            assetId: asset.id,
+            account: account,
+            quantity: amount,
+            costBasis: amount,
+            costBasisCurrency: currency,
+            currentPrice: 1,
+            lastPriceUpdate: null,
+            manualPrice: true,
+            notes: "Auto-generated from dividends",
+        });
+    }
+  }
+  
+  return { augmentedHoldings, augmentedAssets };
+}
+
 // Gain/Loss in SEK
 export function holdingGainLossSEK(h: Holding, assetCurrency: string, fxRates: FxRate[]): number {
   if (!h.currentPrice) return 0;
@@ -118,6 +184,7 @@ export interface PortfolioSummary {
   totalGainSEK: number;
   totalGainPct: number;
   totalDividendsSEK: number;
+  cashBalanceSEK: number;
   allocationByCurrency: Record<string, number>;
   allocationByType: Record<string, number>;
 }
@@ -132,6 +199,7 @@ export function buildPortfolioSummary(
 
   let totalValueSEK = 0;
   let totalCostSEK = 0;
+  let cashBalanceSEK = 0;
   const allocationByCurrency: Record<string, number> = {};
   const allocationByType: Record<string, number> = {};
 
@@ -142,6 +210,7 @@ export function buildPortfolioSummary(
     const costSEK = toSEK(h.costBasis, h.costBasisCurrency || asset.currency, fxRates);
     totalValueSEK += valueSEK;
     totalCostSEK += costSEK;
+    if (asset.type === "cash") cashBalanceSEK += valueSEK;
     allocationByCurrency[asset.currency] = (allocationByCurrency[asset.currency] || 0) + valueSEK;
     allocationByType[asset.type] = (allocationByType[asset.type] || 0) + valueSEK;
   }
@@ -155,6 +224,6 @@ export function buildPortfolioSummary(
 
   return {
     totalValueSEK, totalCostSEK, totalGainSEK, totalGainPct,
-    totalDividendsSEK, allocationByCurrency, allocationByType,
+    totalDividendsSEK, cashBalanceSEK, allocationByCurrency, allocationByType,
   };
 }
