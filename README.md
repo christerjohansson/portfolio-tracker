@@ -10,40 +10,29 @@
 
 ### Dashboard (Översikt)
 - **4 KPI cards** — Total portfolio value, Total gain/loss (% and SEK), Total dividends received (with Yield on Cost), and number of holdings
-- **Asset allocation donut chart** — Visual breakdown by asset type (SE/US/CA stocks, crypto, SE/US/DE funds, cash)
-- **Currency exposure bars** — All holdings converted to SEK, grouped by original currency (SEK, USD, CAD, EUR)
-- **Live FX rate widget** — Shows current USD/CAD/EUR → SEK rates
-- **Snabbregistrering (Quick entry)** — Two-tab widget:
-  - *Snabb*: Add a transaction (buy/sell/deposit/withdrawal) in seconds
-  - *Importera*: Paste a row from an Avanza/Nordnet CSV export and let the parser extract date, type, quantity, price, and amount automatically
-- **Top holdings table** — Your largest positions ranked by SEK value with gain/loss %
+- **Asset allocation donut chart** — Visual breakdown by asset type
+- **Currency exposure & Live FX** — Real-time tracking of SEK, USD, CAD, EUR, BTC, BNB, XRP, ETH and more
+- **Innehav per bank** — NEW: Automatically aggregates and displays total balances per bank/broker (Avanza, Nordnet, Swedbank, Binance, etc.)
+- **Top holdings table** — Ranked positions with detailed Kurs and SEK value, integrated directly into the layout for better alignment
+- **Snabbregistrering (Quick entry)** — Fast transaction logging and smart parser for CSV imports from Swedish banks
 
 ### Holdings (Innehav)
-- Holdings grouped by category: **Aktier**, **Krypto**, **Fonder**, **Kassa**
+- **Tabbed Layout** — Organized by **Aktier**, **Fonder**, **ETF:er**, **Krypto**, and **Kassa** for easy navigation
 - Per-row data: quantity, live price (in native currency), market value (SEK), cost basis (SEK), gain/loss %
-- **Live price refresh** — per holding or bulk "Uppdatera kurser" for all at once
-- **Manual price flag** — mark niche Swedish funds or illiquid assets as manually priced (skipped in auto-refresh)
-- **Add Asset modal** — name, type (8 types supported), currency (auto-suggested by type), ticker, exchange, ISIN
-- **Add Holding modal** — link to asset, account/depå, quantity, cost basis, optional starting price
-- Search/filter bar across name, ticker, and account
+- Bulk "Uppdatera kurser" support for all non-manual positions
+- Search/filter bar across name, ticker, and account within each tab
 
 ### Dividends (Utdelningar)
 - Log dividend events with per-share amount → auto-calculates total from current quantity
 - **Yield on Cost (YoC)** table per holding — total dividends ÷ cost basis
-- Full dividend history with native currency amounts and SEK conversion
-- Orange accent throughout to visually distinguish passive income from capital gains
-
-### Transactions
-- Complete log of all buys, sells, deposits, withdrawals, and transfers
-- Filter by transaction type
-- Summary totals: total purchased, total sold, total fees paid
-- Linked to holding and asset for full context
+- Full historical tracking with SEK conversion based on historical or current rates
 
 ### Settings (Inställningar)
-- **Live FX rate refresh** — fetches from [open.er-api.com](https://open.er-api.com) with one click
-- **Manual FX rate override** — edit any rate directly (useful if you want to lock a rate)
-- **Asset management** — view and delete all registered assets
-- **Data transparency** — clear disclosure of which external APIs are called
+- **Tabbed Asset Management** — Manage Stocks, Funds, ETFs, and Cryptos in separate categories
+- **Smart Asset Search** — "Lägg till ny tillgång" now features a real-time Yahoo Finance search on all tabs, auto-populating Name, Ticker, Marketplace, and Currency
+- **Live FX rate refresh** — fetches global rates and crypto prices (BTC, ETH, etc.) with one click
+- **Manual FX rate override** — lock specific rates for stable calculations
+- **Data transparency** — visual disclosure of all external API touchpoints
 
 ---
 
@@ -94,8 +83,19 @@ All data is stored locally in `portfolio.db` (SQLite). Nothing is sent to extern
 
 ## Getting Started
 
-### Prerequisites
-- Node.js 18+
+## Prerequisites
+
+### Node.js 22+ and Native Modules
+This application uses `better-sqlite3`, which requires compilation of native C++ modules on installation.
+
+**Windows Users:**
+If you are using Node.js 22 or 25, you **must** have the **Visual Studio C++ Build Tools** installed. If `npm install` fails with C++ compilation errors:
+1. Download [Visual Studio Community](https://visualstudio.microsoft.com/downloads/).
+2. During installation, select the **"Desktop development with C++"** workload.
+3. Ensure "MSVC v143 - VS 2022 C++ x64/x86 build tools" is checked.
+4. Restart your terminal and run `npm install` again.
+
+- Node.js 18+ (tested primarily on 22/23)
 - npm
 
 ### Installation
@@ -194,12 +194,15 @@ Full dark mode support with a toggle in the top-right corner.
 
 ---
 
-## Privacy
+## Privacy & Security
 
-- **Local-first**: all financial data lives in `portfolio.db` on your own machine
-- **No accounts, no cloud sync** — run it on your local network or a private server
-- **External calls only for**: Yahoo Finance (prices), CoinGecko (crypto prices), open.er-api.com (FX rates)
-- `portfolio.db` is in `.gitignore` — your data is never committed to version control
+- **100% Local Storage**: All financial data, transactions, and settings live in `portfolio.db` (SQLite) on your own machine.
+- **No Cloud, No Metadata Tracking**: Unlike commercial trackers, this app does not have a "backend" in the cloud. Your data never leaves your computer.
+- **External Calls Only for Market Data**:
+  - [Yahoo Finance API](https://finance.yahoo.com) (Stocks/Funds prices)
+  - [CoinGecko API](https://www.coingecko.com) (Crypto prices)
+  - [open.er-api.com](https://open.er-api.com) (Exchange rates)
+- **Git Safety**: `portfolio.db` and `.env` are included in `.gitignore` by default to prevent accidental data leaks to GitHub.
 
 ---
 
