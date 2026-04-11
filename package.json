@@ -2,9 +2,12 @@
   "name": "rest-express",
   "version": "1.0.0",
   "license": "MIT",
+  "engines": {
+    "node": ">=18 <=24"
+  },
   "type": "module",
   "scripts": {
-    "dev": "cross-env NODE_ENV=development tsx server/index.ts",
+    "dev": "cross-env NODE_ENV=development tsx --env-file=.env server/index.ts",
     "build": "tsx script/build.ts",
     "start": "cross-env NODE_ENV=production node dist/index.cjs",
     "check": "tsc",
