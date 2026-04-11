@@ -13,6 +13,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { insertAssetSchema, insertHoldingSchema } from "@shared/schema";
@@ -592,93 +593,122 @@ export default function Holdings() {
           </button>
         </div>
       ) : (
-        <div className="space-y-5">
-          {grouped.map(group => (
-            <div key={group.label} className="bg-card border border-border rounded-lg overflow-hidden">
-              <div className="px-5 py-3 bg-muted/30 border-b border-border flex items-center justify-between">
-                <h2 className="text-sm font-semibold">{group.label}</h2>
-                <span className="text-xs text-muted-foreground">
-                  {formatSEK(group.rows.reduce((s, r) => s + r.valueSEK, 0))} SEK
-                </span>
-              </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-border/50">
-                      <th className="text-left px-5 py-2.5 text-xs font-medium text-muted-foreground">Tillgång</th>
-                      <th className="text-right px-4 py-2.5 text-xs font-medium text-muted-foreground">Antal</th>
-                      <th className="text-right px-4 py-2.5 text-xs font-medium text-muted-foreground">Kurs</th>
-                      <th className="text-right px-4 py-2.5 text-xs font-medium text-muted-foreground">Marknadsvärde</th>
-                      <th className="text-right px-4 py-2.5 text-xs font-medium text-muted-foreground">Kostnad</th>
-                      <th className="text-right px-4 py-2.5 text-xs font-medium text-muted-foreground">Vinst/Förlust</th>
-                      <th className="text-right px-5 py-2.5 text-xs font-medium text-muted-foreground">Åtgärder</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {group.rows.map(({ h, asset, valueSEK, gainPct, gainSEK }) => (
-                      <tr key={h.id} className="border-b border-border/40 hover:bg-muted/20 transition-colors">
-                        <td className="px-5 py-3">
-                          <div className="font-medium flex items-center gap-1.5">
-                            {asset.name}
-                            <span className="px-1.5 py-0.5 rounded border border-border text-[10px] font-semibold uppercase text-muted-foreground bg-muted/20">
-                              {asset.currency}
-                            </span>
-                          </div>
-                          <div className="text-xs text-muted-foreground mt-0.5">
-                            {asset.ticker ? `${asset.ticker} · ` : ""}{h.account}
-                            {h.manualPrice && <span className="ml-1 text-dividend">(manuellt pris)</span>}
-                          </div>
-                        </td>
-                        <td className="px-4 py-3 text-right tabular-nums">{formatNumber(h.quantity)}</td>
-                        <td className="px-4 py-3 text-right tabular-nums">
-                          {h.currentPrice ? `${h.currentPrice.toFixed(2)} ${asset.currency}` : <span className="text-muted-foreground">—</span>}
-                        </td>
-                        <td className="px-4 py-3 text-right tabular-nums font-medium">
-                          {h.currentPrice ? formatSEK(valueSEK) : <span className="text-muted-foreground">—</span>}
-                        </td>
-                        <td className="px-4 py-3 text-right tabular-nums text-muted-foreground">
-                          {formatSEK(toSEK(h.costBasis, h.costBasisCurrency || asset.currency, fxRates))}
-                        </td>
-                        <td className={`px-4 py-3 text-right tabular-nums font-medium ${gainPct >= 0 ? "text-gain" : "text-loss"}`}>
-                          {h.currentPrice ? formatPct(gainPct) : <span className="text-muted-foreground">—</span>}
-                        </td>
-                        <td className="px-5 py-3 text-right">
-                          {h.id > 0 ? (
-                            <div className="flex items-center justify-end gap-1">
-                              <button
-                                onClick={() => refreshHolding.mutate(h.id)}
-                                title="Uppdatera kurs"
-                                className="p-1.5 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-                              >
-                                <RefreshCw size={13} className={refreshHolding.isPending ? "animate-spin" : ""} />
-                              </button>
-                              <button
-                                onClick={() => { if (confirm("Ta bort innehav?")) deleteHolding.mutate(h.id); }}
-                                title="Ta bort"
-                                className="p-1.5 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
-                              >
-                                <Trash2 size={13} />
-                              </button>
-                              <button
-                                onClick={() => setEditingHolding(h)}
-                                title="Redigera"
-                                className="p-1.5 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-                              >
-                                <Pencil size={13} />
-                              </button>
-                            </div>
-                          ) : (
-                            <span className="text-[10px] text-muted-foreground italic">från utdelning</span>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          ))}
-        </div>
+        <Tabs defaultValue={TYPE_GROUPS[0].label}>
+          <div className="mb-6 overflow-x-auto">
+            <TabsList className="w-full justify-start h-11 bg-muted/40 p-1">
+              {TYPE_GROUPS.map(g => (
+                <TabsTrigger key={g.label} value={g.label} className="px-6 text-xs font-semibold uppercase tracking-wider">
+                  {g.label}
+                  <span className="ml-2 px-1.5 py-0.5 rounded-full bg-muted-foreground/10 text-[10px] text-muted-foreground">
+                    {filtered.filter(r => g.types.includes(r.asset.type)).length}
+                  </span>
+                </TabsTrigger>
+              ))}
+            </TabsList>
+          </div>
+
+          {TYPE_GROUPS.map(group => {
+            const groupRows = filtered.filter(r => group.types.includes(r.asset.type));
+            const groupTotalValue = groupRows.reduce((s, r) => s + r.valueSEK, 0);
+
+            return (
+              <TabsContent key={group.label} value={group.label} className="mt-0 space-y-4">
+                <div className="bg-card border border-border rounded-lg overflow-hidden">
+                  <div className="px-5 py-3 bg-muted/30 border-b border-border flex items-center justify-between">
+                    <h2 className="text-sm font-semibold">{group.label}</h2>
+                    <div className="flex items-center gap-4">
+                      <span className="text-xs text-muted-foreground">
+                        Totalt marknadsvärde: <span className="font-bold text-foreground">{formatSEK(groupTotalValue)} SEK</span>
+                      </span>
+                    </div>
+                  </div>
+                  
+                  {groupRows.length === 0 ? (
+                    <div className="px-5 py-12 text-center">
+                      <p className="text-sm text-muted-foreground italic">Inga innehav i denna kategori {filter ? "som matchar din sökning" : ""}</p>
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="border-b border-border/50">
+                            <th className="text-left px-5 py-2.5 text-xs font-medium text-muted-foreground">Tillgång</th>
+                            <th className="text-right px-4 py-2.5 text-xs font-medium text-muted-foreground">Antal</th>
+                            <th className="text-right px-4 py-2.5 text-xs font-medium text-muted-foreground">Kurs</th>
+                            <th className="text-right px-4 py-2.5 text-xs font-medium text-muted-foreground">Marknadsvärde</th>
+                            <th className="text-right px-4 py-2.5 text-xs font-medium text-muted-foreground">Kostnad</th>
+                            <th className="text-right px-4 py-2.5 text-xs font-medium text-muted-foreground">Vinst/Förlust</th>
+                            <th className="text-right px-5 py-2.5 text-xs font-medium text-muted-foreground">Åtgärder</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {groupRows.map(({ h, asset, valueSEK, gainPct, gainSEK }) => (
+                            <tr key={h.id} className="border-b border-border/40 hover:bg-muted/20 transition-colors">
+                              <td className="px-5 py-3">
+                                <div className="font-medium flex items-center gap-1.5">
+                                  {asset.name}
+                                  <span className="px-1.5 py-0.5 rounded border border-border text-[10px] font-semibold uppercase text-muted-foreground bg-muted/20">
+                                    {asset.currency}
+                                  </span>
+                                </div>
+                                <div className="text-xs text-muted-foreground mt-0.5">
+                                  {asset.ticker ? `${asset.ticker} · ` : ""}{h.account}
+                                  {h.manualPrice && <span className="ml-1 text-dividend">(manuellt pris)</span>}
+                                </div>
+                              </td>
+                              <td className="px-4 py-3 text-right tabular-nums">{formatNumber(h.quantity)}</td>
+                              <td className="px-4 py-3 text-right tabular-nums">
+                                {h.currentPrice ? `${h.currentPrice.toFixed(2)} ${asset.currency}` : <span className="text-muted-foreground">—</span>}
+                              </td>
+                              <td className="px-4 py-3 text-right tabular-nums font-medium">
+                                {h.currentPrice ? formatSEK(valueSEK) : <span className="text-muted-foreground">—</span>}
+                              </td>
+                              <td className="px-4 py-3 text-right tabular-nums text-muted-foreground">
+                                {formatSEK(toSEK(h.costBasis, h.costBasisCurrency || asset.currency, fxRates))}
+                              </td>
+                              <td className={`px-4 py-3 text-right tabular-nums font-medium ${gainPct >= 0 ? "text-gain" : "text-loss"}`}>
+                                {h.currentPrice ? formatPct(gainPct) : <span className="text-muted-foreground">—</span>}
+                              </td>
+                              <td className="px-5 py-3 text-right">
+                                {h.id > 0 ? (
+                                  <div className="flex items-center justify-end gap-1">
+                                    <button
+                                      onClick={() => refreshHolding.mutate(h.id)}
+                                      title="Uppdatera kurs"
+                                      className="p-1.5 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                                    >
+                                      <RefreshCw size={13} className={refreshHolding.isPending ? "animate-spin" : ""} />
+                                    </button>
+                                    <button
+                                      onClick={() => { if (confirm("Ta bort innehav?")) deleteHolding.mutate(h.id); }}
+                                      title="Ta bort"
+                                      className="p-1.5 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                                    >
+                                      <Trash2 size={13} />
+                                    </button>
+                                    <button
+                                      onClick={() => setEditingHolding(h)}
+                                      title="Redigera"
+                                      className="p-1.5 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                                    >
+                                      <Pencil size={13} />
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <span className="text-[10px] text-muted-foreground italic">från utdelning</span>
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              </TabsContent>
+            );
+          })}
+        </Tabs>
       )}
 
       <AddAssetModal open={showAddAsset} onClose={() => setShowAddAsset(false)} />
