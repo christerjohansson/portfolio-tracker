@@ -99,8 +99,21 @@ async function fetchFxRates(): Promise<Record<string, number> | null> {
     const cad = json?.rates?.CAD ? 1 / json.rates.CAD : null;
     const nok = json?.rates?.NOK ? 1 / json.rates.NOK : null;
     if (!usd || !eur || !cad || !nok) return null;
-    return { USD: usd, EUR: eur, CAD: cad, NOK: nok };
-  } catch {
+    
+    const rates: Record<string, number> = { USD: usd, EUR: eur, CAD: cad, NOK: nok };
+    
+    // Add requested cryptos BTC, BNB, XRP, ETH
+    const cryptos = ["BTC", "BNB", "XRP", "ETH"];
+    for (const ticker of cryptos) {
+      const priceUsd = await fetchCryptoPrice(ticker);
+      if (priceUsd !== null) {
+        rates[ticker] = priceUsd * usd;
+      }
+    }
+    
+    return rates;
+  } catch (e) {
+    console.error("[fx-rates] Error fetching rates:", e);
     return null;
   }
 }

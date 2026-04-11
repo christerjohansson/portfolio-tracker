@@ -4,7 +4,7 @@ import type { Asset, Holding, Dividend, FxRate } from "@shared/schema";
 import { buildPortfolioSummary, formatSEK, formatPct, toSEK, holdingMarketValue, holdingGainLossPct, ASSET_TYPE_LABELS, enrichWithDividendCash } from "@/lib/portfolio";
 import {
   TrendingUp, TrendingDown, RefreshCw, Wallet, Coins,
-  Banknote, PiggyBank, AlertCircle
+  Banknote, PiggyBank, AlertCircle, Landmark
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -142,6 +142,21 @@ export default function Dashboard() {
     .map(([currency, value]) => ({ name: currency, value: Math.round(value) }))
     .filter(d => d.value > 0)
     .sort((a, b) => b.value - a.value);
+
+  // Bank balances
+  const bankBalances = useMemo(() => {
+    const banks = ["Avanza", "Nordnet", "Swedbank", "Etoro", "Binance", "Ledger", "Moank"];
+    return banks.map(name => {
+      const value = augmentedHoldings
+        .filter(h => h.account?.toLowerCase().includes(name.toLowerCase()))
+        .reduce((sum, h) => {
+          const asset = assetMap.get(h.assetId);
+          if (!asset) return sum;
+          return sum + toSEK(holdingMarketValue(h), asset.currency, fxRates);
+        }, 0);
+      return { name, value };
+    }).filter(b => b.value > 0);
+  }, [augmentedHoldings, assetMap, fxRates]);
 
   const isEmpty = holdings.length === 0 && !loading;
 
@@ -285,70 +300,96 @@ export default function Dashboard() {
             {/* FX rates widget */}
             <div className="mt-5 pt-4 border-t border-border">
               <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-2">Växelkurser → SEK</p>
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-4 gap-2">
                 {fxRates.map(r => (
-                  <div key={r.currency} className="text-center">
-                    <div className="text-[11px] text-muted-foreground">{r.currency}</div>
-                    <div className="text-sm font-semibold tabular-nums">{r.rateSek.toFixed(2)}</div>
+                  <div key={r.currency} className="text-center p-1 rounded bg-muted/30">
+                    <div className="text-[10px] text-muted-foreground">{r.currency}</div>
+                    <div className="text-[11px] font-bold tabular-nums">
+                      {r.rateSek > 100 ? Math.round(r.rateSek).toLocaleString() : r.rateSek.toFixed(2)}
+                    </div>
                   </div>
                 ))}
               </div>
             </div>
           </div>
 
+          {/* Bank balances */}
+          <div className="bg-card border border-border rounded-lg p-5">
+            <div className="flex items-center gap-2 mb-4">
+              <Landmark size={16} className="text-muted-foreground" />
+              <h2 className="text-sm font-semibold">Innehav per bank</h2>
+            </div>
+            {loading ? (
+              <Skeleton className="h-48 w-full" />
+            ) : bankBalances.length > 0 ? (
+              <div className="space-y-3">
+                {bankBalances.map((b, i) => (
+                  <div key={b.name} className="flex items-center justify-between p-2 rounded-md bg-muted/20 border border-border/50">
+                    <span className="text-xs font-medium">{b.name}</span>
+                    <span className="text-xs font-bold tabular-nums">{formatSEK(b.value)}</span>
+                  </div>
+                ))}
+                <div className="pt-2 mt-2 border-t border-border flex justify-between text-xs font-bold">
+                  <span>Totalt (identifierat):</span>
+                  <span>{formatSEK(bankBalances.reduce((s, b) => s + b.value, 0))}</span>
+                </div>
+              </div>
+            ) : (
+              <div className="text-sm text-muted-foreground text-center py-8">Inga banker identifierade</div>
+            )}
+          </div>
+
+          {/* Top holdings table */}
+          {holdingsSorted.length > 0 && (
+            <div className="xl:col-span-2 bg-card border border-border rounded-lg overflow-hidden flex flex-col">
+              <div className="px-5 py-4 border-b border-border">
+                <h2 className="text-sm font-semibold">Topp-innehav</h2>
+              </div>
+              <div className="overflow-x-auto flex-1">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-border bg-muted/40">
+                      <th className="text-left px-5 py-3 text-xs font-medium text-muted-foreground">Tillgång</th>
+                      <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground">Typ</th>
+                      <th className="text-right px-4 py-3 text-xs font-medium text-muted-foreground">Kurs</th>
+                      <th className="text-right px-4 py-3 text-xs font-medium text-muted-foreground whitespace-nowrap">Värde (SEK)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {holdingsSorted.map(({ h, asset, valueSEK }) => (
+                      <tr key={h.id} className="border-b border-border/50 hover:bg-muted/30 transition-colors">
+                        <td className="px-5 py-3">
+                          <div className="font-medium">{asset.name}</div>
+                          <div className="text-[10px] text-muted-foreground truncate">{asset.ticker || "—"} · {h.account}</div>
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex gap-1 items-center">
+                            <span className={`px-2 py-0.5 rounded text-[10px] font-medium badge-${asset.type.replace("_", "-")}`}>
+                              {ASSET_TYPE_LABELS[asset.type].split(" ")[0]}
+                            </span>
+                            <span className="px-1 py-0.5 rounded border border-border text-[9px] font-semibold uppercase text-muted-foreground">
+                              {asset.currency}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 text-right tabular-nums text-muted-foreground text-xs whitespace-nowrap">
+                          {h.currentPrice?.toFixed(2) ?? "—"}
+                        </td>
+                        <td className="px-4 py-3 text-right tabular-nums font-semibold">
+                          {formatSEK(valueSEK)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
           {/* Quick entry */}
           <div className="bg-card border border-border rounded-lg p-5">
             <h2 className="text-sm font-semibold mb-4">Snabbregistrering</h2>
             <AddQuickEntry holdings={holdings} assets={assets} />
-          </div>
-        </div>
-      )}
-
-      {/* Top holdings table */}
-      {!isEmpty && holdingsSorted.length > 0 && (
-        <div className="bg-card border border-border rounded-lg overflow-hidden">
-          <div className="px-5 py-4 border-b border-border">
-            <h2 className="text-sm font-semibold">Topp-innehav</h2>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border bg-muted/40">
-                  <th className="text-left px-5 py-3 text-xs font-medium text-muted-foreground">Tillgång</th>
-                  <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground">Typ</th>
-                  <th className="text-right px-4 py-3 text-xs font-medium text-muted-foreground">Kurs</th>
-                  <th className="text-right px-4 py-3 text-xs font-medium text-muted-foreground">Värde (SEK)</th>
-                  <th className="text-right px-5 py-3 text-xs font-medium text-muted-foreground">Vinst/Förlust</th>
-                </tr>
-              </thead>
-              <tbody>
-                {holdingsSorted.map(({ h, asset, valueSEK, pct }) => (
-                  <tr key={h.id} className="border-b border-border/50 hover:bg-muted/30 transition-colors">
-                    <td className="px-5 py-3">
-                      <div className="font-medium">{asset.name}</div>
-                      <div className="text-xs text-muted-foreground">{asset.ticker || "—"} · {h.account}</div>
-                    </td>
-                    <td className="px-4 py-3 flex gap-1 items-center">
-                      <span className={`px-2 py-0.5 rounded text-[11px] font-medium badge-${asset.type.replace("_", "-")}`}>
-                        {ASSET_TYPE_LABELS[asset.type]}
-                      </span>
-                      <span className="px-1.5 py-0.5 rounded border border-border text-[10px] font-semibold uppercase text-muted-foreground bg-muted/20">
-                        {asset.currency}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-right tabular-nums text-muted-foreground">
-                      {h.currentPrice?.toFixed(2) ?? "—"} {asset.currency}
-                    </td>
-                    <td className="px-4 py-3 text-right tabular-nums font-medium">
-                      {formatSEK(valueSEK)}
-                    </td>
-                    <td className={`px-5 py-3 text-right tabular-nums font-medium ${pct >= 0 ? "text-gain" : "text-loss"}`}>
-                      {formatPct(pct)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
           </div>
         </div>
       )}

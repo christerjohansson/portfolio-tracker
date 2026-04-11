@@ -176,7 +176,7 @@ export const ASSET_TYPE_CURRENCIES: Record<string, string> = {
   cash: "SEK",
 };
 
-export const CURRENCIES = ["SEK", "USD", "CAD", "EUR", "NOK"] as const;
+export const CURRENCIES = ["SEK", "USD", "CAD", "EUR", "NOK", "BTC", "BNB", "XRP", "ETH"] as const;
 
 export interface PortfolioSummary {
   totalValueSEK: number;

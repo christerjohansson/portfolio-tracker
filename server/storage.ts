@@ -79,16 +79,23 @@ sqlite.exec(`
   );
 `);
 
-// Seed default FX rates if empty
-const existingRates = db.select().from(fxRates).all();
-if (existingRates.length === 0) {
-  const now = new Date().toISOString();
-  db.insert(fxRates).values([
-    { currency: "USD", rateSek: 10.45, updatedAt: now },
-    { currency: "CAD", rateSek: 7.70, updatedAt: now },
-    { currency: "EUR", rateSek: 11.20, updatedAt: now },
-    { currency: "NOK", rateSek: 0.98, updatedAt: now },
-  ]).run();
+// Ensure all required FX rates exist
+const requiredRates = [
+  { currency: "USD", rateSek: 10.45 },
+  { currency: "CAD", rateSek: 7.70 },
+  { currency: "EUR", rateSek: 11.20 },
+  { currency: "NOK", rateSek: 0.98 },
+  { currency: "BTC", rateSek: 700000 },
+  { currency: "BNB", rateSek: 6000 },
+  { currency: "XRP", rateSek: 10 },
+  { currency: "ETH", rateSek: 25000 },
+];
+const now = new Date().toISOString();
+for (const r of requiredRates) {
+  const existing = db.select().from(fxRates).where(eq(fxRates.currency, r.currency)).get();
+  if (!existing) {
+    db.insert(fxRates).values({ ...r, updatedAt: now }).run();
+  }
 }
 
 // Ensure cost_basis_currency column exists (migration)
@@ -231,6 +238,12 @@ export const storage: IStorage = {
     return db.select().from(fxRates).all();
   },
   updateFxRate(currency, rateSek) {
-    db.update(fxRates).set({ rateSek, updatedAt: new Date().toISOString() }).where(eq(fxRates.currency, currency)).run();
+    db.insert(fxRates)
+      .values({ currency, rateSek, updatedAt: new Date().toISOString() })
+      .onConflictDoUpdate({
+        target: fxRates.currency,
+        set: { rateSek, updatedAt: new Date().toISOString() }
+      })
+      .run();
   },
 };
