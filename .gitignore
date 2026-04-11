@@ -1,6 +1,7 @@
 node_modules/
 dist/
 portfolio.db
+portfolio.backup.db
 *.db-shm
 *.db-wal
 .env
