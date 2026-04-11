@@ -28,24 +28,61 @@ async function fetchYahooPrice(ticker: string, type: string): Promise<number | n
   }
 }
 
-// Fetch crypto price from CoinGecko
+// Fetch crypto price — try Yahoo Finance first (BTC-USD format), then CoinGecko
 async function fetchCryptoPrice(ticker: string): Promise<number | null> {
+  // Strip any -USD / -EUR suffix that may have been stored from Yahoo search
+  const symbol = ticker.toUpperCase().replace(/-(USD|EUR|GBP|SEK|NOK|CAD)$/, "");
+  console.log(`[crypto] Fetching price for ${symbol} (raw ticker: ${ticker})`);
+
+  // 1. Try Yahoo Finance (most reliable, no API key needed)
+  try {
+    const yahooSymbol = `${symbol}-USD`;
+    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${yahooSymbol}?interval=1d&range=1d`;
+    const res = await fetch(url, {
+      headers: { "User-Agent": "Mozilla/5.0" },
+      signal: AbortSignal.timeout(8000),
+    });
+    if (res.ok) {
+      const json = await res.json() as any;
+      const price = json?.chart?.result?.[0]?.meta?.regularMarketPrice ?? null;
+      if (price) {
+        console.log(`[crypto] ${symbol} price from Yahoo: $${price}`);
+        return price;
+      }
+    }
+  } catch (e) {
+    console.log(`[crypto] Yahoo failed for ${symbol}:`, (e as Error).message);
+  }
+
+  // 2. Fallback to CoinGecko
   try {
     const coinMap: Record<string, string> = {
       BTC: "bitcoin", ETH: "ethereum", SOL: "solana", ADA: "cardano",
       DOT: "polkadot", AVAX: "avalanche-2", MATIC: "matic-network",
       BNB: "binancecoin", XRP: "ripple", DOGE: "dogecoin",
-      LTC: "litecoin", LINK: "chainlink",
+      LTC: "litecoin", LINK: "chainlink", UNI: "uniswap",
+      AAVE: "aave", ATOM: "cosmos", NEAR: "near", FTM: "fantom",
+      ALGO: "algorand", XLM: "stellar", VET: "vechain",
+      SHIB: "shiba-inu", APE: "apecoin", OP: "optimism",
+      ARB: "arbitrum", SUI: "sui", SEI: "sei-network",
     };
-    const id = coinMap[ticker.toUpperCase()] || ticker.toLowerCase();
+    const id = coinMap[symbol] || symbol.toLowerCase();
     const url = `https://api.coingecko.com/api/v3/simple/price?ids=${id}&vs_currencies=usd`;
     const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
-    if (!res.ok) return null;
-    const json = await res.json() as any;
-    return json?.[id]?.usd ?? null;
-  } catch {
-    return null;
+    if (res.ok) {
+      const json = await res.json() as any;
+      const price = json?.[id]?.usd ?? null;
+      if (price) {
+        console.log(`[crypto] ${symbol} price from CoinGecko: $${price}`);
+        return price;
+      }
+    }
+  } catch (e) {
+    console.log(`[crypto] CoinGecko failed for ${symbol}:`, (e as Error).message);
   }
+
+  console.log(`[crypto] All sources failed for ${symbol}`);
+  return null;
 }
 
 // Fetch FX rates from open.er-api.com (free, no key needed)

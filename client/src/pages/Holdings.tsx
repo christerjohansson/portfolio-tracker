@@ -217,7 +217,7 @@ function AddHoldingModal({ open, onClose, assets }: { open: boolean; onClose: ()
     return "stock_us";
   };
 
-  const cleanTicker = (sym: string): string => sym.replace(/\.(ST|OL|TO|V|DE|F)$/, "");
+  const cleanTicker = (sym: string): string => sym.replace(/\.(ST|OL|TO|V|DE|F)$/, "").replace(/-(USD|EUR|GBP|SEK|NOK|CAD)$/, "");
 
   const handleSelectLocal = (asset: Asset) => {
     setSelectedAsset(asset);
