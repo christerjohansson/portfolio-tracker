@@ -12,6 +12,7 @@ import {
 } from "recharts";
 import { useEffect, useRef, useState, useMemo } from "react";
 import { AddQuickEntry } from "@/components/AddQuickEntry";
+import { ExportPdfButton } from "@/components/ExportPdfButton";
 import { Skeleton } from "@/components/ui/skeleton";
 
 // Animated counter
@@ -168,15 +169,25 @@ export default function Dashboard() {
           <h1 className="text-xl font-bold">Översikt</h1>
           <p className="text-sm text-muted-foreground">Portföljvärde i SEK</p>
         </div>
-        <button
-          data-testid="refresh-all"
-          onClick={() => refreshAll.mutate()}
-          disabled={refreshAll.isPending}
-          className="flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-60"
-        >
-          <RefreshCw size={14} className={refreshAll.isPending ? "animate-spin" : ""} />
-          Uppdatera kurser
-        </button>
+        <div className="flex gap-2">
+          {!loading && holdings.length > 0 && (
+            <ExportPdfButton
+              summary={summary}
+              holdings={augmentedHoldings}
+              assets={augmentedAssets}
+              fxRates={fxRates}
+            />
+          )}
+          <button
+            data-testid="refresh-all"
+            onClick={() => refreshAll.mutate()}
+            disabled={refreshAll.isPending}
+            className="flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-60"
+          >
+            <RefreshCw size={14} className={refreshAll.isPending ? "animate-spin" : ""} />
+            Uppdatera kurser
+          </button>
+        </div>
       </div>
 
       {/* KPI Row */}
